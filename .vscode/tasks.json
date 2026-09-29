@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "start",
+      "path": "foodsaver/backend",
+      "problemMatcher": [],
+      "label": "npm: start - backend",
+      "detail": "Starts the Express & Socket.io backend server on port 4000",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "backend"
+      }
+    },
+    {
+      "type": "npm",
+      "script": "dev",
+      "path": "foodsaver/frontend",
+      "problemMatcher": [],
+      "label": "npm: dev - frontend",
+      "detail": "Starts the Vite React frontend server on http://localhost:5173",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "frontend"
+      }
+    },
+    {
+      "type": "shell",
+      "command": "npm run dev",
+      "problemMatcher": [],
+      "label": "🚀 Start Full Stack (Backend + Frontend)",
+      "detail": "Runs concurrently both backend and frontend servers",
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "type": "shell",
+      "command": "npm run install:all",
+      "problemMatcher": [],
+      "label": "📦 Install All Dependencies",
+      "detail": "Installs node_modules in both backend and frontend folders"
+    },
+    {
+      "type": "npm",
+      "script": "build",
+      "path": "foodsaver/frontend",
+      "problemMatcher": [],
+      "label": "🏗️ Build Frontend for Production",
+      "detail": "Builds the production Vite bundle in foodsaver/frontend/dist"
+    }
+  ]
+}

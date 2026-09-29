@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "dsznajder.es7-react-js-snippets",
+    "humao.rest-client",
+    "ms-vscode.js-debug",
+    "christian-kohler.npm-intellisense",
+    "formulahendry.auto-rename-tag",
+    "eamodio.gitlens"
+  ]
+}

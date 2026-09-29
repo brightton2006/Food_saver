@@ -1,0 +1,78 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "⚡ Debug Backend (Node.js)",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "program": "${workspaceFolder}/foodsaver/backend/server.js",
+      "cwd": "${workspaceFolder}/foodsaver/backend",
+      "console": "integratedTerminal",
+      "restart": true,
+      "env": {
+        "PORT": "4000",
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "🔄 Debug Backend with Auto-Watch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--watch", "server.js"],
+      "cwd": "${workspaceFolder}/foodsaver/backend",
+      "console": "integratedTerminal",
+      "restart": true,
+      "env": {
+        "PORT": "4000",
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "🌐 Launch Frontend (Chrome)",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/foodsaver/frontend/src",
+      "sourceMapPathOverrides": {
+        "webpack:///src/*": "${webRoot}/*"
+      }
+    },
+    {
+      "type": "msedge",
+      "request": "launch",
+      "name": "🌐 Launch Frontend (Edge)",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/foodsaver/frontend/src"
+    },
+    {
+      "type": "node",
+      "request": "attach",
+      "name": "🔌 Attach to Node Backend",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "🚀 Full Stack (Backend + Chrome)",
+      "configurations": [
+        "⚡ Debug Backend (Node.js)",
+        "🌐 Launch Frontend (Chrome)"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "🚀 Full Stack (Backend + Edge)",
+      "configurations": [
+        "⚡ Debug Backend (Node.js)",
+        "🌐 Launch Frontend (Edge)"
+      ],
+      "stopAll": true
+    }
+  ]
+}

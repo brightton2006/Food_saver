@@ -1,0 +1,48 @@
+### Food Saver API Test Suite (VS Code REST Client)
+@baseUrl = http://localhost:4000/api
+
+### 1. Health Check
+GET {{baseUrl}}/health
+
+### 2. Get All Active Listings
+GET {{baseUrl}}/listings
+
+### 3. Create a New Food Bundle Listing (Merchant)
+POST {{baseUrl}}/listings
+Content-Type: application/json
+
+{
+  "merchantId": "m1",
+  "merchantName": "Boulangerie Artisan",
+  "title": "Fresh Sourdough & Pastry Assortment",
+  "description": "5 fresh artisanal sourdough loaves and 4 croissants",
+  "qty": 3,
+  "originalPrice": 25.00,
+  "discountPrice": 7.50,
+  "minutesRemaining": 30,
+  "lat": 37.7749,
+  "lng": -122.4194
+}
+
+### 4. Claim a Listing (Resident)
+# Replace {{listingId}} with a real ID from GET /listings
+POST {{baseUrl}}/claims
+Content-Type: application/json
+
+{
+  "listingId": "listing_1",
+  "residentId": "res_101",
+  "residentName": "Alex Rivera"
+}
+
+### 5. Verify / Redeem Pickup Token (Merchant Counter)
+# Replace token code with token from step 4
+POST {{baseUrl}}/claims/redeem
+Content-Type: application/json
+
+{
+  "token": "TOK-1234"
+}
+
+### 6. Get NGO Rescued Notifications
+GET {{baseUrl}}/ngo/notifications

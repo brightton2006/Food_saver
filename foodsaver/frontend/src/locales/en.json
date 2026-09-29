@@ -1,0 +1,109 @@
+{
+  "nav": {
+    "explore": "Explore",
+    "nearbyFood": "Nearby (2 km)",
+    "myPickups": "My Pickups",
+    "trackOrder": "Live Tracking",
+    "donations": "Donations",
+    "dashboard": "Dashboard",
+    "counter": "Counter",
+    "postFood": "Post Food",
+    "admin": "Admin Portal",
+    "profile": "Profile",
+    "login": "Login",
+    "logout": "Logout",
+    "recentlyAccessed": "Recently Viewed",
+    "language": "Language"
+  },
+  "auth": {
+    "welcome": "Welcome back to FoodSaver",
+    "tagline": "Save Good Food, Save Money, Save The Planet",
+    "continueWithGoogle": "Continue with Google",
+    "or": "OR",
+    "email": "Email Address",
+    "password": "Password",
+    "fullName": "Full Name",
+    "role": "Role",
+    "login": "Sign In",
+    "register": "Create Account",
+    "customer": "Customer",
+    "merchant": "Merchant / Restaurant",
+    "ngo": "NGO / Food Bank",
+    "admin": "Administrator",
+    "partnerOnboarding": "Partner Onboarding",
+    "loggingIn": "Signing in...",
+    "registering": "Registering..."
+  },
+  "customer": {
+    "nearbySurplus": "Hyper-Local Surplus Food",
+    "within2km": "Available within 2 km of your location",
+    "noFood": "No surplus food listings available nearby right now.",
+    "checkBackSoon": "Local restaurants post fresh closing deals every afternoon and evening.",
+    "filterAll": "All Foods",
+    "vegOnly": "Pure Veg",
+    "nonVeg": "Non-Veg",
+    "originalPrice": "Original",
+    "save": "Save",
+    "pickupWindow": "Pickup Window",
+    "addToCart": "Add to Cart",
+    "claimed": "Sold Out"
+  },
+  "cart": {
+    "title": "Your Food Basket",
+    "empty": "Your basket is empty.",
+    "subtotal": "Subtotal",
+    "total": "Total Amount",
+    "checkout": "Proceed to Checkout",
+    "paymentMethod": "Select Payment Method",
+    "upi": "UPI / QR Code",
+    "card": "Debit / Credit Card",
+    "cash": "Cash on Pickup",
+    "placeOrder": "Place Order & Get Claim Token"
+  },
+  "merchant": {
+    "dashboard": "Merchant Control Center",
+    "todaySales": "Today's Sales",
+    "foodSaved": "Portions Saved",
+    "activeListings": "Active Food Listings",
+    "intelligenceTitle": "Food Rescue Intelligence",
+    "intelligenceDesc": "Dynamic pricing suggestions & automatic NGO routing to minimize waste",
+    "postListing": "Post Surplus Food",
+    "manageOrders": "Customer Pickups",
+    "transferNgo": "1-Click NGO Donation"
+  },
+  "ngo": {
+    "dashboard": "NGO Rescue Operations",
+    "availableDonations": "Available Food Donations",
+    "claimDonation": "Claim Donation",
+    "rescuedPortions": "Total Food Rescued",
+    "history": "Rescue History"
+  },
+  "admin": {
+    "title": "Platform Administration",
+    "overview": "System Overview",
+    "merchants": "Merchant Approvals",
+    "ngos": "NGO Approvals",
+    "users": "User Accounts",
+    "orders": "Live Orders",
+    "listings": "Food Listings",
+    "intelligence": "Food Rescue Analytics",
+    "auditLogs": "Audit Logs",
+    "settings": "System Config"
+  },
+  "chatbot": {
+    "title": "FoodSaver Assistant",
+    "placeholder": "Ask about food, orders, pickup, merchant onboarding...",
+    "send": "Send",
+    "disclaimer": "AI Assistant for food discovery and support. Does not disclose sensitive credentials."
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Unable to load data. Please try again.",
+    "saveChanges": "Save Changes",
+    "cancel": "Cancel",
+    "approve": "Approve",
+    "reject": "Reject",
+    "viewDetails": "View Details",
+    "status": "Status"
+  }
+}

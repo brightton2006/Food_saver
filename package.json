@@ -1,0 +1,20 @@
+{
+  "name": "foodsaver-direct-connect-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Root workspace runner for Food Saver Direct Connect",
+  "scripts": {
+    "dev": "npm run dev:all",
+    "dev:backend": "cd foodsaver/backend && npm run dev",
+    "dev:frontend": "cd foodsaver/frontend && npm run dev",
+    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start": "npm run dev:all",
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "install:backend": "cd foodsaver/backend && npm install",
+    "install:frontend": "cd foodsaver/frontend && npm install",
+    "build:frontend": "cd foodsaver/frontend && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

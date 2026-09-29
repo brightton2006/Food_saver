@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450" viewBox="0 0 600 450">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f9b74c"/>
+      <stop offset="1" stop-color="#d6563b"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="450" fill="url(#g1)" rx="30"/>
+  <circle cx="150" cy="150" r="70" fill="#fff" opacity="0.24"/>
+  <circle cx="430" cy="130" r="42" fill="#fff" opacity="0.18"/>
+  <rect x="96" y="230" width="408" height="28" rx="14" fill="#fff" opacity="0.8"/>
+  <rect x="96" y="280" width="312" height="24" rx="12" fill="#fff" opacity="0.8"/>
+  <rect x="96" y="322" width="252" height="22" rx="11" fill="#fff" opacity="0.8"/>
+  <text x="50%" y="72%" text-anchor="middle" fill="#fff" font-size="36" font-family="Arial, sans-serif" letter-spacing="0.03em">Community Meals</text>
+</svg>

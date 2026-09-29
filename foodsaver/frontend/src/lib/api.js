@@ -1,0 +1,249 @@
+export const API_BASE = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "http://localhost:4000";
+
+async function request(path, options = {}) {
+  try {
+    let token = null;
+    if (typeof window !== "undefined") {
+      const keys = ["foodsaver_session", "foodsaver.session", "token"];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        if (raw.startsWith("{") || raw.startsWith("[")) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.token && parsed.token !== "null" && parsed.token !== "undefined") {
+              token = parsed.token;
+              break;
+            }
+          } catch {}
+        } else if (raw && raw !== "null" && raw !== "undefined") {
+          token = raw;
+          break;
+        }
+      }
+    }
+
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    };
+
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error || data.message || `Request failed (${res.status})`);
+      err.status = res.status;
+      err.code = data.code;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err.name === "TypeError" || err.message?.includes("fetch") || err.message?.includes("NetworkError")) {
+      throw new Error(
+        "Unable to connect to the backend server (http://localhost:4000). Please ensure the backend server is running."
+      );
+    }
+    throw err;
+  }
+}
+
+export const api = {
+  fetchFoodImage: (foodName, category = "", cuisine = "") =>
+    request(
+      `/api/food-image?query=${encodeURIComponent(foodName)}&category=${encodeURIComponent(category)}&cuisine=${encodeURIComponent(cuisine)}`
+    ),
+  getListings: () => request("/api/listings"),
+  getNearbyFood: (lat, lng, radius = 2.0, category = "All") =>
+    request(`/api/food/nearby?latitude=${lat}&longitude=${lng}&radius=${radius}&category=${encodeURIComponent(category)}`),
+  updateUserLocation: (payload) =>
+    request("/api/users/location", { method: "POST", body: JSON.stringify(payload) }),
+  getHotels: () => request("/api/listings/hotels"),
+  getHotelDetails: (hotelId) => request(`/api/listings/hotels/${encodeURIComponent(hotelId)}`),
+  updateHotelProfile: (payload) =>
+    request("/api/listings/hotel-profile", { method: "PUT", body: JSON.stringify(payload) }),
+  getMerchantListings: (merchantName) =>
+    request(`/api/listings/merchant/${encodeURIComponent(merchantName)}`),
+  createListing: (payload) =>
+    request("/api/listings", { method: "POST", body: JSON.stringify(payload) }),
+  updateListing: (id, payload) =>
+    request(`/api/listings/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteListing: (id, merchantName) =>
+    request(`/api/listings/${id}`, { method: "DELETE", body: JSON.stringify({ merchantName }) }),
+  claimListing: (id, payload) =>
+    request(`/api/listings/${id}/claim`, { method: "POST", body: JSON.stringify(payload) }),
+  getMerchantClaims: (merchantName) =>
+    request(`/api/claims/merchant/${encodeURIComponent(merchantName)}`),
+  getCustomerClaims: (customerId) =>
+    request(`/api/claims/customer/${encodeURIComponent(customerId)}`),
+  lookupToken: (token) => request(`/api/claims/${token}`),
+  collectToken: (token) => request(`/api/claims/${token}/collect`, { method: "POST" }),
+  rerouteToNgo: (token) => request(`/api/claims/${token}/reroute-ngo`, { method: "POST" }),
+  getNotifications: (userId) => request(`/api/notifications?userId=${encodeURIComponent(userId || "guest")}`),
+  markNotificationRead: (id, userId) =>
+    request(`/api/notifications/${id}/read`, { method: "PATCH", body: JSON.stringify({ userId }) }),
+  createDonation: (payload) =>
+    request("/api/donations", { method: "POST", body: JSON.stringify(payload) }),
+  getNearbyDonations: (lat = 9.1724, lng = 77.8694, radius = 5.0) =>
+    request(`/api/donations/nearby?latitude=${lat}&longitude=${lng}&radius=${radius}`),
+  getDonationDetails: (id) => request(`/api/donations/${id}`),
+  claimDonation: (id, ngoUserId) =>
+    request(`/api/donations/${id}/claim`, { method: "POST", body: JSON.stringify({ ngoUserId }) }),
+  updateDonationStatus: (id, status) =>
+    request(`/api/donations/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  getNgoNotifications: () => request("/api/ngo/notifications"),
+  acknowledgeNotification: (id, ngoName) =>
+    request(`/api/ngo/notifications/${id}/acknowledge`, { method: "POST", body: JSON.stringify({ ngoName }) }),
+  ngoRescueListing: (payload) =>
+    request("/api/ngo/rescue", { method: "POST", body: JSON.stringify(payload) }),
+  merchantLogin: (payload) =>
+    request("/api/auth/merchant-login", { method: "POST", body: JSON.stringify(payload) }),
+  verifyMerchant: (token) =>
+    request("/api/auth/verify-merchant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    }),
+  login: (payload) =>
+    request("/api/auth/login", { method: "POST", body: JSON.stringify(payload) }),
+  registerUser: (payload) =>
+    request("/api/auth/register", { method: "POST", body: JSON.stringify(payload) }),
+  registerPartner: (payload) =>
+    request("/api/auth/register-partner", { method: "POST", body: JSON.stringify(payload) }),
+  googleLogin: (payload) =>
+    request("/api/auth/google", { method: "POST", body: JSON.stringify(payload) }),
+  updateProfile: (payload) =>
+    request("/api/auth/profile", { method: "PUT", body: JSON.stringify(payload) }),
+  resubmitDocuments: (payload) =>
+    request("/api/auth/resubmit-documents", { method: "POST", body: JSON.stringify(payload) }),
+  getAdminUsers: (role = "all", status = "all", search = "") =>
+    request(`/api/admin/users?role=${encodeURIComponent(role)}&status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}`),
+  approveAdminUser: (id) =>
+    request(`/api/admin/users/${encodeURIComponent(id)}/approve`, { method: "POST" }),
+  rejectAdminUser: (id) =>
+    request(`/api/admin/users/${encodeURIComponent(id)}/reject`, { method: "POST" }),
+  getVerifications: (role = "all", status = "all") =>
+    request(`/api/admin/verifications?role=${encodeURIComponent(role)}&status=${encodeURIComponent(status)}`),
+  approveVerification: (id) =>
+    request(`/api/admin/verifications/${id}/approve`, { method: "POST" }),
+  rejectVerification: (id, reason) =>
+    request(`/api/admin/verifications/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+  requestResubmission: (id, reason) =>
+    request(`/api/admin/verifications/${id}/request-resubmission`, { method: "POST", body: JSON.stringify({ reason }) }),
+  createHotel: (payload) =>
+    request("/api/listings/hotels", { method: "POST", body: JSON.stringify(payload) }),
+  getMerchantHotel: (merchantId) =>
+    request(`/api/listings/hotels/merchant/${encodeURIComponent(merchantId)}`),
+  getAdminNotifications: () => request("/api/admin/notifications"),
+  markAdminNotificationRead: (id) =>
+    request(`/api/admin/notifications/${id}/read`, { method: "POST" }),
+  markAllAdminNotificationsRead: () =>
+    request("/api/admin/notifications/mark-all-read", { method: "POST" }),
+  getAdminHotels: () => request("/api/admin/hotels"),
+  approveAdminHotel: (id) =>
+    request(`/api/admin/hotels/${id}/approve`, { method: "POST" }),
+  rejectAdminHotel: (id, reason) =>
+    request(`/api/admin/hotels/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+  getMerchantTodaySales: (merchantName) =>
+    request(`/api/claims/sales/today/${encodeURIComponent(merchantName)}`),
+  getAdminMetrics: () => request("/api/claims/admin/metrics"),
+  getAdminSettings: () => request("/api/admin/settings"),
+  updateAdminSettings: (payload) =>
+    request("/api/admin/settings", { method: "POST", body: JSON.stringify(payload) }),
+
+  // Admin Merchant & NGO Onboarding Inspection API methods
+  getAdminMerchants: (status = "all", type = "all", search = "") =>
+    request(`/api/admin/merchants?status=${encodeURIComponent(status)}&type=${encodeURIComponent(type)}&search=${encodeURIComponent(search)}`),
+  getAdminMerchantDetails: (id) =>
+    request(`/api/admin/merchants/${encodeURIComponent(id)}`),
+  approveAdminMerchant: (id) =>
+    request(`/api/admin/merchants/${encodeURIComponent(id)}/approve`, { method: "POST" }),
+  rejectAdminMerchant: (id, reason) =>
+    request(`/api/admin/merchants/${encodeURIComponent(id)}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+  requestChangesAdminMerchant: (id, reason) =>
+    request(`/api/admin/merchants/${encodeURIComponent(id)}/request-changes`, { method: "POST", body: JSON.stringify({ reason }) }),
+
+  getAdminNgos: (status = "all", search = "") =>
+    request(`/api/admin/ngos?status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}`),
+  getAdminNgoDetails: (id) =>
+    request(`/api/admin/ngos/${encodeURIComponent(id)}`),
+  approveAdminNgo: (id) =>
+    request(`/api/admin/ngos/${encodeURIComponent(id)}/approve`, { method: "POST" }),
+  rejectAdminNgo: (id, reason) =>
+    request(`/api/admin/ngos/${encodeURIComponent(id)}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+  requestChangesAdminNgo: (id, reason) =>
+    request(`/api/admin/ngos/${encodeURIComponent(id)}/request-changes`, { method: "POST", body: JSON.stringify({ reason }) }),
+
+  // Token Verification & Order Completion API methods
+  verifyPickupToken: (token, orderId, method = "TOKEN") =>
+    request("/api/orders/verify-pickup", {
+      method: "POST",
+      body: JSON.stringify({ token, orderId, method }),
+    }),
+  completeOrderHandover: (orderId) =>
+    request(`/api/orders/${encodeURIComponent(orderId)}/handover`, { method: "POST" }),
+  verifyClaimToken: (token, orderId, method = "TOKEN", merchantUserId) =>
+    request("/api/claims/verify-token", {
+      method: "POST",
+      body: JSON.stringify({ token, orderId, method, merchantUserId }),
+    }),
+
+  // Live Order Tracking API methods
+  confirmOrder: (orderId) =>
+    request(`/api/orders/${encodeURIComponent(orderId)}/confirm`, { method: "POST" }),
+  startOrderDelivery: (orderId) =>
+    request(`/api/orders/${encodeURIComponent(orderId)}/start-delivery`, { method: "POST" }),
+  markOrderDelivered: (orderId) =>
+    request(`/api/orders/${encodeURIComponent(orderId)}/delivered`, { method: "POST" }),
+  cancelOrder: (orderId) =>
+    request(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: "POST" }),
+  getOrderDetails: (orderId) =>
+    request(`/api/orders/${encodeURIComponent(orderId)}`),
+
+  // Recently Accessed API methods
+  getRecentlyAccessed: (limit = 10) =>
+    request(`/api/recently-accessed?limit=${limit}`),
+  addRecentlyAccessed: (payload) =>
+    request("/api/recently-accessed", { method: "POST", body: JSON.stringify(payload) }),
+  deleteRecentlyAccessed: (id) =>
+    request(`/api/recently-accessed/${id}`, { method: "DELETE" }),
+  clearRecentlyAccessed: () =>
+    request("/api/recently-accessed", { method: "DELETE" }),
+
+  // Food Rescue Intelligence API methods
+  getMerchantIntelligence: (merchantId) =>
+    request(merchantId ? `/api/intelligence/merchant/${encodeURIComponent(merchantId)}` : "/api/intelligence/merchant"),
+  getPlatformIntelligence: () =>
+    request("/api/intelligence/platform"),
+
+  // Chatbot Assistant API methods
+  sendChatMessage: (message) =>
+    request("/api/chatbot/message", { method: "POST", body: JSON.stringify({ message }) }),
+
+  // Admin Monitoring & Stats API methods
+  getAdminDashboardStats: () =>
+    request("/api/admin/dashboard-stats"),
+  getAdminAuditLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/api/admin/audit-logs?${q}`);
+  },
+  getAdminOrders: (status = "all", search = "") =>
+    request(`/api/admin/orders?status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}`),
+  getAdminListings: (status = "all", search = "") =>
+    request(`/api/admin/listings?status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}`),
+  getAdminDonations: () =>
+    request("/api/admin/donations"),
+
+  // Auth additions
+  getAuthMe: () =>
+    request("/api/auth/me"),
+  refreshToken: (token) =>
+    request("/api/auth/refresh", { method: "POST", body: JSON.stringify({ token }) }),
+  logout: () =>
+    request("/api/auth/logout", { method: "POST" }),
+};
+

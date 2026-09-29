@@ -1,0 +1,20 @@
+{
+  "folders": [
+    {
+      "name": "Root Workspace",
+      "path": "."
+    },
+    {
+      "name": "Backend (Express + Socket.io)",
+      "path": "foodsaver/backend"
+    },
+    {
+      "name": "Frontend (React + Vite)",
+      "path": "foodsaver/frontend"
+    }
+  ],
+  "settings": {
+    "editor.tabSize": 2,
+    "editor.formatOnSave": true
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "foodsaver-backend",
+  "version": "1.0.0",
+  "description": "Food Saver Direct Connect - backend API + realtime engine",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "clean-test-data": "node src/database/cleanup_test_data.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "google-auth-library": "^11.0.2",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.3",
+    "nanoid": "^3.3.7",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
