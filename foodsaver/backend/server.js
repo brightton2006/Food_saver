@@ -73,6 +73,24 @@ app.get("/api/test-db", async (req, res) => {
   }
 });
 
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+
+const paymentRouter = require("./src/routes/payment.routes");
+const userAddressRouter = require("./src/routes/userAddress.routes");
+const reviewRouter = require("./src/routes/review.routes");
+const { router: webPushRouter } = require("./src/routes/webPush.routes");
+
+app.use(helmet({ contentSecurityPolicy: false })); // Allow external assets (Leaflet map tiles, Unsplash images)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests from this IP, please try again later." },
+});
+app.use("/api/", apiLimiter);
+
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/merchant", merchantRouter);
@@ -95,6 +113,10 @@ app.use("/api/recently-accessed", recentlyAccessedRouter);
 app.use("/api/intelligence", intelligenceRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/chatbot", chatRouter);
+app.use("/api/payments", paymentRouter);
+app.use("/api/user/addresses", userAddressRouter);
+app.use("/api/reviews", reviewRouter);
+app.use("/api/push", webPushRouter);
 
 setupOrderSockets(io);
 

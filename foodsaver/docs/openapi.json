@@ -1,0 +1,132 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FoodSaver Direct Connect Production API",
+    "version": "2.0.0",
+    "description": "Production-grade RESTful and Real-Time WebSocket API specification for FoodSaver Direct Connect (Day Mode Ordering & Night Mode Surplus Rescue)."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000/api",
+      "description": "Development API Server"
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "User & Merchant Authentication",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Authenticated successfully, returns JWT token and user profile." }
+        }
+      }
+    },
+    "/auth/change-password": {
+      "post": {
+        "summary": "Force Password Reset / Password Change",
+        "responses": {
+          "200": { "description": "Password updated successfully." }
+        }
+      }
+    },
+    "/listings": {
+      "get": {
+        "summary": "Fetch Active Surplus Deals (Night Mode Feed)",
+        "responses": {
+          "200": { "description": "List of active discounted surplus items." }
+        }
+      }
+    },
+    "/listings/hotels": {
+      "get": {
+        "summary": "Fetch Verified Merchant Hotels",
+        "responses": {
+          "200": { "description": "List of approved hotels and restaurants across 38 districts." }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "summary": "Place Day Mode Order or Claim Night Surplus Deal",
+        "responses": {
+          "200": { "description": "Order placed with pickup token FS-XXXXXX and QR code." }
+        }
+      }
+    },
+    "/orders/verify-pickup": {
+      "post": {
+        "summary": "Merchant Verify Customer Pickup Token / QR",
+        "responses": {
+          "200": { "description": "Token verified, ready for handover." }
+        }
+      }
+    },
+    "/payments/create-order": {
+      "post": {
+        "summary": "Create Razorpay Payment Gateway Order",
+        "responses": {
+          "200": { "description": "Razorpay order created with payment ID." }
+        }
+      }
+    },
+    "/payments/verify": {
+      "post": {
+        "summary": "Verify Razorpay Payment Signature",
+        "responses": {
+          "200": { "description": "Payment verified." }
+        }
+      }
+    },
+    "/user/addresses": {
+      "get": {
+        "summary": "Fetch Saved User Addresses",
+        "responses": {
+          "200": { "description": "Saved customer address list." }
+        }
+      },
+      "post": {
+        "summary": "Save New User Address",
+        "responses": {
+          "201": { "description": "Address saved." }
+        }
+      }
+    },
+    "/reviews": {
+      "post": {
+        "summary": "Submit Rating & Review after Pickup",
+        "responses": {
+          "201": { "description": "Review recorded and hotel rating recalculated." }
+        }
+      }
+    },
+    "/ngo/donations": {
+      "get": {
+        "summary": "Fetch Expiring Surplus Donation Queue for Verified NGOs",
+        "responses": {
+          "200": { "description": "List of available food rescue donations." }
+        }
+      }
+    },
+    "/admin/metrics": {
+      "get": {
+        "summary": "Admin Impact & Platform Metrics",
+        "responses": {
+          "200": { "description": "Platform totals: food saved (kg), rescued meals, revenue, district stats." }
+        }
+      }
+    }
+  }
+}

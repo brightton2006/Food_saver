@@ -23,7 +23,8 @@ import {
   ShoppingBag,
   TrendingUp,
   Leaf,
-  MapPin
+  MapPin,
+  ExternalLink
 } from "lucide-react";
 
 export default function AdminDashboard() {

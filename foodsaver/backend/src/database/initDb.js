@@ -443,6 +443,8 @@ async function initializeDatabase() {
     `);
 
     console.log("✅ Star Schema database initialization completed successfully.");
+    const { runMigration } = require("./migrations/v2_production_upgrade");
+    await runMigration();
   } catch (error) {
     console.error("❌ Error initializing Star Schema MySQL database:", error);
     throw error;

@@ -53,8 +53,10 @@ function IndexRoute({ searchQuery, city, openAuth }) {
   return <PreLoginHome onOpenAuth={openAuth} searchQuery={searchQuery} city={city} />;
 }
 
+import ForcePasswordResetModal from "./components/ForcePasswordResetModal.jsx";
+
 function Shell() {
-  const { setSession } = useSession();
+  const { session, setSession } = useSession();
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [toast, setToast] = useState("");
@@ -62,6 +64,14 @@ function Shell() {
   const [city, setCity] = useState("Kovilpatti");
   const navigate = useNavigate();
   const location = useLocation();
+
+  const handlePasswordChanged = () => {
+    if (session) {
+      setSession({ ...session, mustChangePassword: false, must_change_password: false });
+    }
+    setToast("Password updated successfully!");
+    setTimeout(() => setToast(""), 3000);
+  };
 
   const openAuth = (mode) => {
     navigate(mode === "signup" ? "/login?mode=signup" : "/login");
@@ -251,6 +261,11 @@ function Shell() {
           onAuthenticate={handleAuthenticate}
         />
       )}
+      <ForcePasswordResetModal
+        isOpen={Boolean(session?.mustChangePassword || session?.must_change_password)}
+        user={session}
+        onPasswordChanged={handlePasswordChanged}
+      />
       {toast ? (
         <div className="toast-stack">
           <div className="toast">{toast}</div>

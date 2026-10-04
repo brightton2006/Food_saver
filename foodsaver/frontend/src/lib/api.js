@@ -115,8 +115,26 @@ export const api = {
     request("/api/auth/send-otp", { method: "POST", body: JSON.stringify(payload) }),
   verifyOtp: (payload) =>
     request("/api/auth/verify-otp", { method: "POST", body: JSON.stringify(payload) }),
+  changePassword: (payload) =>
+    request("/api/auth/change-password", { method: "POST", body: JSON.stringify(payload) }),
   updatePreferences: (payload) =>
     request("/api/auth/preferences", { method: "PUT", body: JSON.stringify(payload) }),
+
+  // Payments & User Addresses & Reviews
+  createPaymentOrder: (amount, receipt) =>
+    request("/api/payments/create-order", { method: "POST", body: JSON.stringify({ amount, receipt }) }),
+  verifyPayment: (payload) =>
+    request("/api/payments/verify", { method: "POST", body: JSON.stringify(payload) }),
+  getUserAddresses: () => request("/api/user/addresses"),
+  createUserAddress: (payload) =>
+    request("/api/user/addresses", { method: "POST", body: JSON.stringify(payload) }),
+  deleteUserAddress: (id) =>
+    request(`/api/user/addresses/${id}`, { method: "DELETE" }),
+  submitReview: (payload) =>
+    request("/api/reviews", { method: "POST", body: JSON.stringify(payload) }),
+  getHotelReviews: (hotelId) => request(`/api/reviews/hotel/${encodeURIComponent(hotelId)}`),
+  subscribePushNotification: (subscription) =>
+    request("/api/push/subscribe", { method: "POST", body: JSON.stringify({ subscription }) }),
   createDonation: (payload) =>
     request("/api/donations", { method: "POST", body: JSON.stringify(payload) }),
   getNearbyDonations: (lat = 9.1724, lng = 77.8694, radius = 5.0) =>

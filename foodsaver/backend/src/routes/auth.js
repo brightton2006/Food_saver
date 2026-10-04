@@ -1039,10 +1039,10 @@ router.put("/profile", async (req, res) => {
 });
 
 /**
- * POST /api/auth/send-otp
+ * POST /api/auth/send-otp & POST /api/auth/phone/send-otp & POST /api/auth/phone/resend-otp
  * Dispatches a cryptographically secure 6-digit SMS OTP
  */
-router.post("/send-otp", async (req, res) => {
+router.post(["/send-otp", "/phone/send-otp", "/phone/resend-otp"], async (req, res) => {
   try {
     const { phoneNumber, userId, email, channel = "sms" } = req.body || {};
 
@@ -1063,22 +1063,21 @@ router.post("/send-otp", async (req, res) => {
 
     // Optionally send OTP by email as well if user email is known
     if (email && email.includes("@")) {
-      // In production, we don't expose OTP in logs or response
       sendOtpEmail({ to: email, name: "FoodSaver User", otp: "******" }).catch(() => {});
     }
 
     return res.json(result);
   } catch (err) {
-    console.error("Error in /api/auth/send-otp:", err);
+    console.error("Error in send-otp:", err);
     return res.status(500).json({ success: false, error: "Failed to dispatch verification code." });
   }
 });
 
 /**
- * POST /api/auth/verify-otp
+ * POST /api/auth/verify-otp & POST /api/auth/phone/verify-otp
  * Verifies 6-digit OTP code and marks phone as verified
  */
-router.post("/verify-otp", async (req, res) => {
+router.post(["/verify-otp", "/phone/verify-otp"], async (req, res) => {
   try {
     const { phoneNumber, otp, userId } = req.body || {};
 
@@ -1111,8 +1110,51 @@ router.post("/verify-otp", async (req, res) => {
 
     return res.json(result);
   } catch (err) {
-    console.error("Error in /api/auth/verify-otp:", err);
+    console.error("Error in verify-otp:", err);
     return res.status(500).json({ success: false, error: "Failed to verify OTP code." });
+  }
+});
+
+/**
+ * GET /api/auth/phone/status
+ * Retrieves phone verification status for user or phone
+ */
+router.get(["/phone/status", "/status"], async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user?.userId;
+    const phone = req.query.phoneNumber || req.query.phone;
+
+    let userRow = null;
+    if (userId) {
+      const [rows] = await pool.query(
+        "SELECT user_id, phone_number, phone_verified, phone_verified_at FROM dim_users WHERE user_id = ? OR email = ?",
+        [userId, userId]
+      );
+      if (rows.length > 0) userRow = rows[0];
+    } else if (phone) {
+      const [rows] = await pool.query(
+        "SELECT user_id, phone_number, phone_verified, phone_verified_at FROM dim_users WHERE phone_number = ?",
+        [phone]
+      );
+      if (rows.length > 0) userRow = rows[0];
+    }
+
+    const isVerified = Boolean(userRow?.phone_verified);
+    const phoneNumber = userRow?.phone_number || phone || null;
+    const maskedPhone = phoneNumber && phoneNumber.length >= 10
+      ? `${phoneNumber.slice(0, 5)}******${phoneNumber.slice(-2)}`
+      : null;
+
+    return res.json({
+      success: true,
+      status: isVerified ? "VERIFIED" : "UNVERIFIED",
+      isVerified,
+      phoneNumber,
+      maskedPhone,
+      verifiedAt: userRow?.phone_verified_at || null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -1190,6 +1232,63 @@ router.put("/preferences", async (req, res) => {
   } catch (err) {
     console.error("Error updating user preferences:", err);
     return res.status(500).json({ error: "Failed to update preferences." });
+  }
+});
+
+/**
+ * POST /api/auth/change-password
+ * Forces password reset for demo accounts or user requested password updates
+ */
+router.post("/change-password", async (req, res) => {
+  try {
+    const { userId, email, oldPassword, newPassword } = req.body || {};
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters long." });
+    }
+
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : req.body?.token;
+    const tokenPayload = token ? verifyToken(token) : null;
+
+    const targetUserId = userId || tokenPayload?.userId || tokenPayload?.id;
+    const targetEmail = email ? email.toLowerCase().trim() : (tokenPayload?.email || "").toLowerCase().trim();
+
+    if (!targetUserId && !targetEmail) {
+      return res.status(400).json({ error: "User identity required." });
+    }
+
+    const [users] = await pool.query(
+      "SELECT * FROM dim_users WHERE user_id = ? OR LOWER(email) = ?",
+      [targetUserId, targetEmail]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const user = users[0];
+
+    // If oldPassword provided, verify it (unless must_change_password is true for demo setup)
+    if (oldPassword) {
+      const match = await bcrypt.compare(oldPassword, user.password_hash);
+      if (!match) {
+        return res.status(400).json({ error: "Current password is incorrect." });
+      }
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      "UPDATE dim_users SET password_hash = ?, must_change_password = FALSE WHERE user_id = ?",
+      [newHash, user.user_id]
+    );
+
+    return res.json({
+      ok: true,
+      message: "Password changed successfully! You may now log in with your new password.",
+    });
+  } catch (err) {
+    console.error("Error changing password:", err);
+    return res.status(500).json({ error: "Failed to change password." });
   }
 });
 

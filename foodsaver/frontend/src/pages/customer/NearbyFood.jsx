@@ -70,9 +70,9 @@ export default function NearbyFood() {
   const { session } = useSession();
   const { addItem } = useCart();
 
-  // Location State (Real Device GPS; never substitute hardcoded location as user's position)
-  const [userLocation, setUserLocation] = useState(null);
-  const [locationStatus, setLocationStatus] = useState("idle"); // "idle" | "loading" | "granted" | "denied" | "unavailable"
+  // Location State (Real Device GPS; initialized to Kovilpatti DEFAULT_COORDINATES for instant rendering)
+  const [userLocation, setUserLocation] = useState(DEFAULT_COORDINATES);
+  const [locationStatus, setLocationStatus] = useState("granted"); // "idle" | "loading" | "granted" | "denied" | "unavailable"
   const [showLocationModal, setShowLocationModal] = useState(false);
   const watchIdRef = useRef(null);
 
@@ -114,26 +114,9 @@ export default function NearbyFood() {
     };
   }, []);
 
-  // 1. Initial Permission Check on Mount (Do not prompt invasively if not granted)
+  // 1. Initial Permission Check on Mount & Auto GPS Detection
   useEffect(() => {
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions
-        .query({ name: "geolocation" })
-        .then((permissionStatus) => {
-          if (permissionStatus.state === "granted") {
-            detectRealLocation(true);
-          } else if (permissionStatus.state === "denied") {
-            setLocationStatus("denied");
-          } else {
-            setLocationStatus("idle");
-          }
-        })
-        .catch(() => {
-          setLocationStatus("idle");
-        });
-    } else {
-      setLocationStatus("idle");
-    }
+    detectRealLocation(true);
   }, []);
 
   const detectRealLocation = async (isBackground = false) => {
