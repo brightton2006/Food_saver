@@ -12,6 +12,7 @@ import FoodNotification from "../components/animations/FoodNotification.jsx";
 import FoodCardAnimation from "../components/animations/FoodCardAnimation.jsx";
 import LoadingSkeleton from "../components/animations/LoadingSkeleton.jsx";
 import PageTransition from "../components/animations/PageTransition.jsx";
+import NightSaleSection from "../components/NightSaleSection.jsx";
 import { api } from "../lib/api.js";
 import { addMyClaim } from "../lib/myClaims.js";
 
@@ -337,38 +338,26 @@ export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kov
                 <NearbyMarker isUser={true} name="You are here" distance="Current GPS" />
               </div>
 
-              {/* Merchant Marker 1 — Top Left */}
-              <div className="absolute top-8 left-8 sm:left-16 z-20">
-                <NearbyMarker
-                  name="Aarthi Hotel"
-                  distance="850m"
-                  category="Meals"
-                  hasSurplus={true}
-                  onClick={() => navigate("/customer")}
-                />
-              </div>
-
-              {/* Merchant Marker 2 — Bottom Right */}
-              <div className="absolute bottom-8 right-8 sm:right-20 z-20">
-                <NearbyMarker
-                  name="Hari Food Court"
-                  distance="1.2 km"
-                  category="Snacks"
-                  hasSurplus={true}
-                  onClick={() => navigate("/customer")}
-                />
-              </div>
-
-              {/* Merchant Marker 3 — Top Right */}
-              <div className="absolute top-10 right-12 sm:right-28 z-20">
-                <NearbyMarker
-                  name="Royal Bakery"
-                  distance="1.6 km"
-                  category="Bakery"
-                  hasSurplus={true}
-                  onClick={() => navigate("/customer")}
-                />
-              </div>
+              {/* Dynamic Real Merchant Markers */}
+              {hotels.slice(0, 3).map((h, idx) => {
+                const posClass =
+                  idx === 0
+                    ? "absolute top-8 left-8 sm:left-16 z-20"
+                    : idx === 1
+                    ? "absolute bottom-8 right-8 sm:right-20 z-20"
+                    : "absolute top-10 right-12 sm:right-28 z-20";
+                return (
+                  <div key={h.id || idx} className={posClass}>
+                    <NearbyMarker
+                      name={h.hotelName}
+                      distance={h.distanceFormatted || "Near you"}
+                      category={h.cuisine?.split("•")[0]?.trim() || "Food"}
+                      hasSurplus={(h.items?.length || 0) > 0}
+                      onClick={() => navigate(`/restaurant/${h.id}`)}
+                    />
+                  </div>
+                );
+              })}
 
               {/* Floating Real-Time Surplus Alert Badge */}
               <motion.div
@@ -390,6 +379,11 @@ export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kov
 
         </div>
       </section>
+
+      {/* DEDICATED TONIGHT'S FOOD DEALS SECTION */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 16px" }}>
+        <NightSaleSection searchQuery={searchQuery} city={city} onOpenAuth={onOpenAuth} />
+      </div>
 
       {/* 3. FOOD CATEGORIES ("What's on your mind?") */}
       <section className="categories-mind-section">
@@ -489,15 +483,25 @@ export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kov
           <span className="subtext-muted">Selected highly-rated restaurants and customer favorites</span>
         </div>
 
-        <div className="restaurant-grid-4cols">
-          {topPicks.map((listing) => (
-            <ListingCard
-              key={`top-${listing.id}`}
-              listing={listing}
-              onClaim={() => handleClaimClick(listing)}
-            />
-          ))}
-        </div>
+        {topPicks.length === 0 ? (
+          <div className="empty-state card" style={{ padding: "36px 24px", textAlign: "center", border: "1.5px dashed rgba(245, 158, 11, 0.4)", borderRadius: 16 }}>
+            <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>🍱</span>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>No Surplus Food Deals Right Now</h3>
+            <p style={{ fontSize: 13, color: "#cbd5e1", maxWidth: 440, margin: "0 auto", lineHeight: 1.5 }}>
+              All surplus food has been saved or verified partners haven't published end-of-day deals yet. Check back soon!
+            </p>
+          </div>
+        ) : (
+          <div className="restaurant-grid-4cols">
+            {topPicks.map((listing) => (
+              <ListingCard
+                key={`top-${listing.id}`}
+                listing={listing}
+                onClaim={() => handleClaimClick(listing)}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 6. EXPLORE SECTION ("Explore restaurants around you") */}

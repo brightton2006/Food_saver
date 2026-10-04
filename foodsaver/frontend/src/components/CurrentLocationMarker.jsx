@@ -22,17 +22,17 @@ export default function CurrentLocationMarker({ location, showAccuracyCircle = t
 
   if (isNaN(lat) || isNaN(lng)) return null;
 
-  // Custom FoodSaver Teal Beacon DivIcon
+  // Custom Distinctive Blue Location Marker DivIcon (Requirement 1)
   const userIcon = L.divIcon({
     className: "current-location-marker-container",
     html: `
       <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
-        <!-- Pulsing radar ring -->
-        <div style="position: absolute; width: 42px; height: 42px; border-radius: 50%; background: rgba(22, 121, 107, 0.35); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <!-- Direction ring -->
-        <div style="position: absolute; width: 28px; height: 28px; border-radius: 50%; background: rgba(232, 244, 241, 0.6); border: 1.5px solid #16796B;"></div>
-        <!-- Center Teal Dot -->
-        <div style="position: relative; width: 16px; height: 16px; border-radius: 50%; background: #145C52; border: 2.5px solid #ffffff; box-shadow: 0 4px 12px rgba(20, 92, 82, 0.5); display: flex; align-items: center; justify-content: center;">
+        <!-- Pulsing blue radar ring -->
+        <div style="position: absolute; width: 42px; height: 42px; border-radius: 50%; background: rgba(37, 99, 235, 0.35); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+        <!-- Direction blue ring -->
+        <div style="position: absolute; width: 28px; height: 28px; border-radius: 50%; background: rgba(219, 234, 254, 0.6); border: 2px solid #2563EB;"></div>
+        <!-- Distinctive Blue Dot -->
+        <div style="position: relative; width: 16px; height: 16px; border-radius: 50%; background: #2563EB; border: 2.5px solid #ffffff; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.6); display: flex; align-items: center; justify-content: center;">
         </div>
       </div>
     `,
@@ -48,10 +48,10 @@ export default function CurrentLocationMarker({ location, showAccuracyCircle = t
           center={[lat, lng]}
           radius={accuracy}
           pathOptions={{
-            color: "#16796B",
-            weight: 1,
-            fillColor: "#16796B",
-            fillOpacity: 0.10,
+            color: "#2563EB",
+            weight: 1.5,
+            fillColor: "#3B82F6",
+            fillOpacity: 0.12,
           }}
         />
       )}

@@ -22,7 +22,8 @@ import {
   Layers,
   ShoppingBag,
   TrendingUp,
-  Leaf
+  Leaf,
+  MapPin
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -72,6 +73,17 @@ export default function AdminDashboard() {
   const [rejectModal, setRejectModal] = useState(null); // { type: 'merchant'|'ngo'|'user', id: string, name: string }
   const [rejectionReason, setRejectionReason] = useState("");
 
+  // Hotel Directory & Map Pin Verification States
+  const [directoryHotels, setDirectoryHotels] = useState([]);
+  const [directoryLocationFilter, setDirectoryLocationFilter] = useState("all");
+  const [directorySearch, setDirectorySearch] = useState("");
+  const [claims, setClaims] = useState([]);
+  const [editPinModal, setEditPinModal] = useState(null);
+  const [pinAddress, setPinAddress] = useState("");
+  const [pinLat, setPinLat] = useState("");
+  const [pinLng, setPinLng] = useState("");
+  const [pinSaving, setPinSaving] = useState(false);
+
   const isAdmin = (session?.role || "").toUpperCase() === "ADMIN";
 
   useEffect(() => {
@@ -97,10 +109,14 @@ export default function AdminDashboard() {
       loadListings();
     } else if (activeSection === "audit") {
       loadAuditLogs();
+    } else if (activeSection === "directory") {
+      loadDirectoryHotels();
+    } else if (activeSection === "claims") {
+      loadClaims();
     } else if (activeSection === "settings") {
       loadSettings();
     }
-  }, [activeSection, userRoleFilter, userStatusFilter, merchantStatusFilter, ngoStatusFilter, orderStatusFilter, listingStatusFilter, auditActionFilter, isAdmin]);
+  }, [activeSection, userRoleFilter, userStatusFilter, merchantStatusFilter, ngoStatusFilter, orderStatusFilter, listingStatusFilter, auditActionFilter, directoryLocationFilter, directorySearch, isAdmin]);
 
   async function recordAdminActivity() {
     try {
@@ -237,6 +253,98 @@ export default function AdminDashboard() {
       alert(err.message || "Failed to load merchant profile details.");
     } finally {
       setInspectLoading(false);
+    }
+  }
+
+  async function loadDirectoryHotels() {
+    setLoading(true);
+    try {
+      const res = await api.getAdminDirectoryHotels("all", directoryLocationFilter, directorySearch);
+      if (res && res.hotels) {
+        setDirectoryHotels(res.hotels);
+      }
+    } catch (err) {
+      console.error("Failed loading directory hotels", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadClaims() {
+    setLoading(true);
+    try {
+      const res = await api.getAdminHotelClaims();
+      if (res && res.claims) {
+        setClaims(res.claims);
+      }
+    } catch (err) {
+      console.error("Failed loading claims", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSavePin(e) {
+    e.preventDefault();
+    if (!editPinModal) return;
+    setPinSaving(true);
+    try {
+      await api.updateAdminHotelLocation(editPinModal.hotelId, {
+        address: pinAddress,
+        latitude: parseFloat(pinLat),
+        longitude: parseFloat(pinLng),
+        verifyPin: true,
+      });
+      setActionSuccess(`Map pin for "${editPinModal.hotelName}" verified!`);
+      setEditPinModal(null);
+      setTimeout(() => setActionSuccess(""), 4000);
+      loadDirectoryHotels();
+    } catch (err) {
+      alert(err.message || "Failed to update map pin.");
+    } finally {
+      setPinSaving(false);
+    }
+  }
+
+  async function handleApproveClaim(hotelId) {
+    setActionLoading(true);
+    try {
+      const res = await api.approveAdminHotelClaim(hotelId);
+      setActionSuccess(res.message || "Ownership claim approved!");
+      setTimeout(() => setActionSuccess(""), 4000);
+      loadClaims();
+      loadDashboardStats();
+    } catch (err) {
+      alert(err.message || "Failed to approve claim.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRejectClaim(hotelId) {
+    const reason = prompt("Enter reason for rejecting ownership claim:", "Documents could not be verified");
+    if (!reason) return;
+    setActionLoading(true);
+    try {
+      await api.rejectAdminHotelClaim(hotelId, reason);
+      setActionSuccess("Ownership claim rejected.");
+      setTimeout(() => setActionSuccess(""), 4000);
+      loadClaims();
+    } catch (err) {
+      alert(err.message || "Failed to reject claim.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleToggleHotelStatus(hotelId, newStatus) {
+    try {
+      await api.updateAdminHotelStatus(hotelId, { status: newStatus });
+      setActionSuccess(`Hotel status updated to ${newStatus}.`);
+      setTimeout(() => setActionSuccess(""), 4000);
+      loadDirectoryHotels();
+    } catch (err) {
+      alert(err.message || "Failed to update hotel status.");
     }
   }
 
@@ -390,6 +498,8 @@ export default function AdminDashboard() {
         <div className="flex gap-2 overflow-x-auto pb-2 my-5 no-scrollbar">
           {[
             { id: "overview", label: "System Overview", icon: Activity },
+            { id: "directory", label: "Hotel Directory & Pins", icon: MapPin },
+            { id: "claims", label: `Ownership Claims (${claims.length})`, icon: ShieldCheck },
             { id: "merchants", label: `Merchants (${stats?.pendingMerchantApprovals ? `${stats.pendingMerchantApprovals} pending` : "All"})`, icon: Store },
             { id: "ngos", label: `NGOs (${stats?.pendingNgoApprovals ? `${stats.pendingNgoApprovals} pending` : "All"})`, icon: Heart },
             { id: "users", label: "Users", icon: Users },
@@ -501,6 +611,251 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB: HOTEL DIRECTORY & MAP PIN VERIFICATION */}
+        {activeSection === "directory" && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm animate-in fade-in space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <span>📍</span> Kovilpatti Business Directory & Map Pins
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Inspect directory establishments, verify real GPS map coordinates, and adjust pin locations.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Search hotel or address..."
+                  value={directorySearch}
+                  onChange={(e) => setDirectorySearch(e.target.value)}
+                  className="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
+                />
+
+                <div className="flex gap-1.5">
+                  {[
+                    { id: "all", label: "All" },
+                    { id: "verified", label: "✓ Verified" },
+                    { id: "location_pending", label: "⚠️ Pin Pending" },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setDirectoryLocationFilter(f.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                        directoryLocationFilter === f.id
+                          ? "bg-slate-800 text-white dark:bg-white dark:text-slate-900"
+                          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {loading ? (
+              <p className="text-xs text-slate-400 py-8 text-center">Loading directory hotels...</p>
+            ) : directoryHotels.length === 0 ? (
+              <p className="text-xs text-slate-400 py-8 text-center">No directory establishments found.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                      <th className="py-3 px-3">Business Name</th>
+                      <th className="py-3 px-3">Address & District</th>
+                      <th className="py-3 px-3">Coordinates (Lat, Lng)</th>
+                      <th className="py-3 px-3">Pin Verification</th>
+                      <th className="py-3 px-3">Partner Status</th>
+                      <th className="py-3 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {directoryHotels.map((h) => {
+                      const isPinVerified = h.locationStatus === "verified" && h.latitude !== null;
+                      return (
+                        <tr key={h.hotelId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                          <td className="py-3 px-3">
+                            <strong className="text-slate-900 dark:text-slate-100 font-bold block">
+                              {h.hotelName}
+                            </strong>
+                            <span className="text-[11px] text-slate-400">
+                              {h.cuisine || "Restaurant"} • ID: {h.hotelId}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 max-w-xs text-slate-600 dark:text-slate-300">
+                            {h.address}
+                          </td>
+
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
+                            {h.latitude && h.longitude
+                              ? `${Number(h.latitude).toFixed(5)}, ${Number(h.longitude).toFixed(5)}`
+                              : <span className="text-amber-500 font-bold">Unassigned</span>}
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                isPinVerified
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                              }`}
+                            >
+                              {isPinVerified ? "✓ Verified Pin" : "⚠️ Location Pending"}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                h.partnerStatus === "verified" || h.status === "APPROVED"
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : h.partnerStatus === "suspended"
+                                  ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              }`}
+                            >
+                              {h.partnerStatus || "unverified"}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditPinModal(h);
+                                  setPinAddress(h.address || "");
+                                  setPinLat(h.latitude || "9.1724");
+                                  setPinLng(h.longitude || "77.8694");
+                                }}
+                                className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition-colors"
+                              >
+                                📍 Verify Pin
+                              </button>
+
+                              {h.partnerStatus === "suspended" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleHotelStatus(h.hotelId, "APPROVED")}
+                                  className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold"
+                                >
+                                  Reinstate
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleHotelStatus(h.hotelId, "SUSPENDED")}
+                                  className="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold"
+                                >
+                                  Suspend
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: OWNERSHIP CLAIMS */}
+        {activeSection === "claims" && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm animate-in fade-in space-y-6">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <span>🛡️</span> Hotel Ownership Claims ({claims.length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Review merchant ownership requests for directory listings. Approving a claim grants the merchant access to manage the hotel and publish surplus food.
+              </p>
+            </div>
+
+            {loading ? (
+              <p className="text-xs text-slate-400 py-8 text-center">Loading ownership claims...</p>
+            ) : claims.length === 0 ? (
+              <div className="text-center py-12">
+                <span className="text-3xl block mb-2">🎉</span>
+                <p className="text-xs text-slate-400">No pending hotel ownership claims right now.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {claims.map((c) => {
+                  let docObj = {};
+                  try {
+                    docObj = typeof c.claimDocuments === "string" ? JSON.parse(c.claimDocuments) : c.claimDocuments || {};
+                  } catch (e) {}
+
+                  return (
+                    <div
+                      key={c.hotelId}
+                      className="p-5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            {c.hotelName}
+                          </h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                            Claim Pending
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">📍 {c.address}</p>
+
+                        <div className="mt-3 p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs space-y-1">
+                          <p className="text-slate-700 dark:text-slate-300">
+                            <strong>Claimant:</strong> {c.claimant?.name} ({c.claimant?.email})
+                          </p>
+                          {c.claimant?.phone && (
+                            <p className="text-slate-600 dark:text-slate-400">
+                              <strong>Phone:</strong> {c.claimant.phone}
+                            </p>
+                          )}
+                          {docObj.businessRegistrationNumber && (
+                            <p className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">
+                              <strong>License #:</strong> {docObj.businessRegistrationNumber}
+                            </p>
+                          )}
+                          {docObj.notes && (
+                            <p className="text-slate-500 italic mt-1">"{docObj.notes}"</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() => handleRejectClaim(c.hotelId)}
+                          className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl text-xs font-bold"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() => handleApproveClaim(c.hotelId)}
+                          className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs"
+                        >
+                          Approve Ownership
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1307,6 +1662,114 @@ export default function AdminDashboard() {
                 )}
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* Edit & Verify Map Pin Modal */}
+        {editPinModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                      Verify Map Pin & Coordinates
+                    </h3>
+                    <p className="text-[11px] text-slate-500">{editPinModal.hotelName}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditPinModal(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSavePin} className="space-y-4 pt-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Street Address & Landmarks
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={pinAddress}
+                    onChange={(e) => setPinAddress(e.target.value)}
+                    required
+                    className="w-full text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3 focus:outline-none focus:border-emerald-500 font-medium"
+                    placeholder="Enter precise postal address in Kovilpatti..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Latitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={pinLat}
+                      onChange={(e) => setPinLat(e.target.value)}
+                      required
+                      placeholder="e.g. 9.1724"
+                      className="w-full text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Longitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={pinLng}
+                      onChange={(e) => setPinLng(e.target.value)}
+                      required
+                      placeholder="e.g. 77.8694"
+                      className="w-full text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl text-amber-800 dark:text-amber-300 text-[11px] leading-relaxed">
+                  <strong>Verification Note:</strong> Saving these coordinates will update the status to <code>verified</code> and anchor the hotel on the interactive customer discovery map at these real coordinates.
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+                  {pinLat && pinLng && (
+                    <a
+                      href={`https://www.google.com/maps?q=${pinLat},${pinLng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Preview on Maps
+                    </a>
+                  )}
+                  <div className="flex items-center gap-2 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setEditPinModal(null)}
+                      className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={pinSaving}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                    >
+                      {pinSaving ? "Saving Pin..." : "Save & Verify Pin"}
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
         )}

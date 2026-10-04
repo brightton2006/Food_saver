@@ -153,7 +153,7 @@ test("Real-Time Order Tracking Full System Integration Test", async (t) => {
   const trackingState = await store.getOrderTrackingState(orderId);
   assert.equal(trackingState.merchantLocation.latitude, testLat, "DB last_latitude should be updated");
 
-  // 7. Merchant marks order as DELIVERED
+  // 7. Verify token & Merchant marks order as DELIVERED
   const stoppedPromise = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Timeout waiting for tracking:stopped")), 5000);
     customerSocket.on("tracking:stopped", (data) => {
@@ -162,9 +162,13 @@ test("Real-Time Order Tracking Full System Integration Test", async (t) => {
     });
   });
 
+  if (claimRes.claim?.token) {
+    await store.verifyPickupToken({ token: claimRes.claim.token, merchantUserId: merchantId });
+  }
+
   const deliveredRes = await store.markOrderDelivered(orderId, merchantId);
   assert.ok(deliveredRes.ok, "Mark delivered should succeed");
-  assert.equal(deliveredRes.order.status, "DELIVERED", "Order status should be DELIVERED");
+  assert.equal(deliveredRes.order.status, "PICKED_UP", "Order status should be PICKED_UP");
   assert.equal(deliveredRes.order.trackingActive, false, "Tracking active should be FALSE");
 
   // Broadcast stopped event via server room

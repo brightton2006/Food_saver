@@ -115,10 +115,7 @@ export default function Login() {
 
     if (routeRole && validRouteRole) {
       setRole(routeRole);
-      if (routeRole === "admin") {
-        setEmail("admin@foodsaver.com");
-        setPassword("Admin@12345");
-      } else if (routeRole === "merchant") {
+      if (routeRole === "merchant") {
         setDocType("FSSAI Food Safety License");
       } else if (routeRole === "ngo") {
         setDocType("NGO 80G Tax Exemption Certificate");

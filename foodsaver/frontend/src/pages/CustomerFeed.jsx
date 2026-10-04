@@ -11,6 +11,7 @@ import { api } from "../lib/api.js";
 import { addMyClaim } from "../lib/myClaims.js";
 import PageTransition from "../components/animations/PageTransition.jsx";
 import LoadingSkeleton from "../components/animations/LoadingSkeleton.jsx";
+import NightSaleSection from "../components/NightSaleSection.jsx";
 
 const CATEGORIES = [
   "All",
@@ -267,6 +268,9 @@ export default function CustomerFeed({ searchQuery = "", city = "Kovilpatti" }) 
           Explore 2 km Deals →
         </button>
       </div>
+
+      {/* DEDICATED NIGHT-TIME SURPLUS FOOD FLASH SALE SECTION */}
+      <NightSaleSection searchQuery={searchQuery} city={city} />
 
       {/* MAIN CATEGORY NAVIGATION */}
       <div className="primary-category-nav">

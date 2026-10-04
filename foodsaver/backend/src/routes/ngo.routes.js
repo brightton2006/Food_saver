@@ -32,9 +32,16 @@ module.exports = function ngoRouter(io) {
     }
   }
 
-  // Legacy route: GET /api/ngo/partners — seeded NGO directory
-  router.get('/partners', (req, res) => {
-    res.json({ partners: store.NGO_PARTNERS || [] });
+  // Real route: GET /api/ngo/partners — approved NGO partners from database
+  router.get('/partners', async (req, res) => {
+    try {
+      const [rows] = await pool.query(
+        "SELECT ngo_id as id, ngo_name as name, service_radius_km as radiusKm, address, contact_number as phone FROM dim_ngos WHERE verification_status = 'approved' OR status = 'APPROVED'"
+      );
+      res.json({ partners: rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Legacy route: GET /api/ngo/notifications — rescue alerts

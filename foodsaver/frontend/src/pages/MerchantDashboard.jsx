@@ -73,6 +73,15 @@ export default function MerchantDashboard() {
       const res = await api.getMerchantHotel(merchantIdentifier);
       if (res && res.hotel) {
         setMerchantHotel(res.hotel);
+        setProfileForm({
+          hotelName: res.hotel.hotelName || "",
+          description: res.hotel.description || "",
+          address: res.hotel.address || "",
+          mobile: res.hotel.contactNumber || res.hotel.mobile || "",
+          cuisine: res.hotel.cuisine || "",
+          logo: res.hotel.logo || "",
+          coverImage: res.hotel.coverImage || "",
+        });
       }
     } catch (err) {
       console.error("Failed loading merchant hotel", err);
@@ -183,13 +192,13 @@ export default function MerchantDashboard() {
   // Hotel Profile Form state
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
-    hotelName: session?.hotelName || session?.name || "Bright Food Hotel",
-    description: session?.description || "Fresh surplus food partner offering daily deals.",
-    address: session?.address || "14 Kovilpatti Main Road, Kovilpatti",
-    mobile: session?.mobile || "+91 98765 43210",
-    cuisine: session?.cuisine || "South Indian • Bakery • Fast Food",
-    logo: session?.logo || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80",
-    coverImage: session?.coverImage || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
+    hotelName: session?.hotelName || session?.name || "",
+    description: session?.description || "",
+    address: session?.address || "",
+    mobile: session?.mobile || "",
+    cuisine: session?.cuisine || "",
+    logo: session?.logo || "",
+    coverImage: session?.coverImage || "",
   });
 
   async function handleSaveProfile(e) {

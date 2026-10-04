@@ -434,12 +434,19 @@ export async function geocodeAddressHierarchy({
  * @param {number} destLng
  * @param {number} [startLat]
  * @param {number} [startLng]
+ * @param {string} [travelMode="driving"] "driving" | "walking" | "transit"
  */
-export function openDirections(destLat, destLng, startLat = null, startLng = null) {
+export function openDirections(destLat, destLng, startLat = null, startLng = null, travelMode = "driving") {
   if (!destLat || !destLng) return;
-  let url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
+  const dLat = encodeURIComponent(destLat);
+  const dLng = encodeURIComponent(destLng);
+  const mode = encodeURIComponent(travelMode || "driving");
+
+  let url = `https://www.google.com/maps/dir/?api=1&destination=${dLat},${dLng}&travelmode=${mode}`;
   if (startLat && startLng) {
-    url += `&origin=${startLat},${startLng}`;
+    const sLat = encodeURIComponent(startLat);
+    const sLng = encodeURIComponent(startLng);
+    url = `https://www.google.com/maps/dir/?api=1&origin=${sLat},${sLng}&destination=${dLat},${dLng}&travelmode=${mode}`;
   }
   window.open(url, "_blank");
 }
@@ -508,10 +515,22 @@ export function calculateDistanceToRoute(userLat, userLng, routePoints = []) {
 
 /**
  * Fetch nearby verified FoodSaver merchants from the backend API.
- * @param {{ latitude: number, longitude: number, radius?: number, searchQuery?: string }} params
- * @returns {Promise<Array>}
+ * Supports both positional arguments (latitude, longitude, radius, searchQuery) and object params.
  */
-export async function fetchNearbyMerchants({ latitude, longitude, radius = 2.0, searchQuery = "" }) {
+export async function fetchNearbyMerchants(arg1, arg2, arg3, arg4) {
+  let latitude, longitude, radius = 2.0, searchQuery = "";
+  if (typeof arg1 === "object" && arg1 !== null) {
+    latitude = arg1.latitude ?? arg1.lat;
+    longitude = arg1.longitude ?? arg1.lng;
+    radius = arg1.radius ?? arg1.radiusKm ?? 2.0;
+    searchQuery = arg1.searchQuery ?? arg1.q ?? "";
+  } else {
+    latitude = arg1;
+    longitude = arg2;
+    radius = arg3 ?? 2.0;
+    searchQuery = typeof arg4 === "string" ? arg4 : arg4?.searchQuery ?? "";
+  }
+
   try {
     const sQuery = searchQuery ? `&searchQuery=${encodeURIComponent(searchQuery)}` : "";
     const res = await fetch(
@@ -529,18 +548,117 @@ export async function fetchNearbyMerchants({ latitude, longitude, radius = 2.0, 
 }
 
 /**
- * Fetch nearby active surplus food deals from the backend API.
- * @param {{ latitude: number, longitude: number, radius?: number, category?: string, searchQuery?: string, sortBy?: string }} params
- * @returns {Promise<Array>}
+ * Fetch both approved FoodSaver partners AND discovered real-world places from backend.
+ * Adapts to radii: 1 km, 2 km, 5 km, 10 km, 25 km.
+ * Supports category filters (Vegetarian, Non-Vegetarian, Biryani, Bakery, Cafe, Meals, All).
  */
-export async function fetchNearbyFood({
-  latitude,
-  longitude,
-  radius = 2.0,
-  category = "All",
-  searchQuery = "",
-  sortBy = "distance",
-}) {
+export async function fetchNearbyLocations(arg1, arg2, arg3, arg4) {
+  let lat, lng, radius = 5.0, category = "All", searchQuery = "", sortBy = "distance", hasSurplusOnly = false;
+  if (typeof arg1 === "object" && arg1 !== null) {
+    lat = arg1.latitude ?? arg1.lat;
+    lng = arg1.longitude ?? arg1.lng;
+    radius = arg1.radius ?? arg1.radiusKm ?? 5.0;
+    category = arg1.category ?? "All";
+    searchQuery = arg1.searchQuery ?? arg1.q ?? "";
+    sortBy = arg1.sortBy ?? "distance";
+    hasSurplusOnly = arg1.hasSurplusOnly ?? false;
+  } else {
+    lat = arg1;
+    lng = arg2;
+    radius = arg3 ?? 5.0;
+    if (typeof arg4 === "object" && arg4 !== null) {
+      category = arg4.category ?? "All";
+      searchQuery = arg4.searchQuery ?? "";
+      sortBy = arg4.sortBy ?? "distance";
+      hasSurplusOnly = arg4.hasSurplusOnly ?? false;
+    } else if (typeof arg4 === "string") {
+      category = arg4;
+    }
+  }
+
+  try {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lng: String(lng),
+      radius: String(radius),
+      category: String(category || "All"),
+      sortBy: String(sortBy || "distance"),
+      hasSurplusOnly: String(hasSurplusOnly),
+    });
+    if (searchQuery) params.append("searchQuery", searchQuery);
+
+    const res = await fetch(`${API_BASE}/api/locations/nearby?${params.toString()}`);
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return data;
+    }
+    return {
+      success: false,
+      businesses: [],
+      merchants: [],
+      externalPlaces: [],
+      totalCount: 0,
+      verifiedPartnersCount: 0,
+    };
+  } catch (err) {
+    console.error("Error in fetchNearbyLocations:", err);
+    return {
+      success: false,
+      businesses: [],
+      merchants: [],
+      externalPlaces: [],
+      totalCount: 0,
+      verifiedPartnersCount: 0,
+    };
+  }
+}
+
+/**
+ * Autocomplete search for districts of Tamil Nadu, towns, streets, PIN codes, and FoodSaver merchants.
+ */
+export async function searchLocationsBackend(query, lat = null, lng = null, radius = 25.0) {
+  if (!query || !query.trim()) return [];
+  try {
+    const params = new URLSearchParams({ q: query.trim() });
+    if (lat && lng) {
+      params.append("lat", String(lat));
+      params.append("lng", String(lng));
+      params.append("radius", String(radius));
+    }
+    const res = await fetch(`${API_BASE}/api/locations/search?${params.toString()}`);
+    const data = await res.json();
+    if (res.ok && data.success && Array.isArray(data.results)) {
+      return data.results;
+    }
+    return [];
+  } catch (err) {
+    console.error("Error in searchLocationsBackend:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch nearby active surplus food deals from the backend API.
+ * Supports both positional and object arguments.
+ */
+export async function fetchNearbyFood(arg1, arg2, arg3, arg4, arg5, arg6) {
+  let latitude, longitude, radius = 2.0, category = "All", searchQuery = "", sortBy = "distance";
+  if (typeof arg1 === "object" && arg1 !== null) {
+    latitude = arg1.latitude ?? arg1.lat;
+    longitude = arg1.longitude ?? arg1.lng;
+    radius = arg1.radius ?? arg1.radiusKm ?? 2.0;
+    category = arg1.category ?? "All";
+    searchQuery = arg1.searchQuery ?? arg1.q ?? "";
+    sortBy = arg1.sortBy ?? "distance";
+  } else {
+    latitude = arg1;
+    longitude = arg2;
+    radius = arg3 ?? 2.0;
+    category = arg4 ?? "All";
+    searchQuery = arg5 ?? "";
+    sortBy = arg6 ?? "distance";
+  }
+
   try {
     const catParam = category && category !== "All" ? `&category=${encodeURIComponent(category)}` : "";
     const sParam = searchQuery ? `&searchQuery=${encodeURIComponent(searchQuery)}` : "";

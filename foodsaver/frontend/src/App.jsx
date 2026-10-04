@@ -4,6 +4,7 @@ import { AnimatePresence } from "framer-motion";
 import { SessionProvider, useSession } from "./lib/session.jsx";
 import { CartProvider } from "./lib/cart.jsx";
 import { LanguageProvider } from "./lib/i18n.jsx";
+import { ThemeProvider } from "./lib/theme.jsx";
 import Header from "./components/Header.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import BottomNav from "./components/BottomNav.jsx";
@@ -140,6 +141,8 @@ function Shell() {
           }
         />
         <Route path="/restaurant/:hotelId" element={<RestaurantPage />} />
+        <Route path="/hotels/:hotelId" element={<RestaurantPage />} />
+        <Route path="/hotels" element={<Navigate to="/customer/nearby-food" replace />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/track-order" element={<Navigate to="/customer/pickups" replace />} />
         <Route path="/track-order/:orderId" element={<Navigate to="/customer/pickups" replace />} />
@@ -230,6 +233,8 @@ function Shell() {
         <Route path="/login/:role" element={<Login />} />
         <Route path="/signup" element={<Login />} />
         <Route path="/signup/:role" element={<Login />} />
+        <Route path="/merchant/login" element={<Login />} />
+        <Route path="/merchant/register" element={<Login />} />
         <Route path="/merchant/onboarding" element={<MerchantOnboardingWizard />} />
         <Route path="/ngo/onboarding" element={<NgoOnboardingWizard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -257,13 +262,15 @@ function Shell() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <SessionProvider>
-        <CartProvider>
-          <Shell />
-        </CartProvider>
-      </SessionProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <SessionProvider>
+          <CartProvider>
+            <Shell />
+          </CartProvider>
+        </SessionProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }
 

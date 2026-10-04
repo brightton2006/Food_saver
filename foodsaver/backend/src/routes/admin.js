@@ -1,6 +1,7 @@
 const express = require("express");
 const store = require("../data/store");
 const { requireAdmin } = require("./auth");
+const { pool } = require("../config/database");
 const router = express.Router();
 
 // Apply requireAdmin middleware to protect all /api/admin/* endpoints
@@ -703,5 +704,314 @@ router.post("/settings", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/directory-hotels
+ * Review all registered and directory hotels with location verification status
+ */
+router.get("/directory-hotels", async (req, res) => {
+  try {
+    const { status = "all", locationStatus = "all", search = "" } = req.query;
+
+    let query = `
+      SELECT h.*, u.full_name as merchant_name, u.email as merchant_email,
+        u_claim.full_name as claimant_name, u_claim.email as claimant_email
+      FROM dim_hotels h
+      LEFT JOIN dim_users u ON h.merchant_user_id = u.user_id
+      LEFT JOIN dim_users u_claim ON h.claimed_by_merchant_id = u_claim.user_id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (locationStatus !== "all") {
+      query += " AND h.location_status = ?";
+      params.push(locationStatus);
+    }
+
+    if (status !== "all") {
+      query += " AND h.partner_status = ?";
+      params.push(status);
+    }
+
+    if (search.trim()) {
+      query += " AND (h.hotel_name LIKE ? OR h.address LIKE ? OR h.district LIKE ?)";
+      const wild = `%${search.trim()}%`;
+      params.push(wild, wild, wild);
+    }
+
+    query += " ORDER BY (h.location_status = 'location_pending') DESC, h.hotel_name ASC";
+
+    const [rows] = await pool.query(query, params);
+
+    return res.json({
+      ok: true,
+      success: true,
+      count: rows.length,
+      hotels: rows.map((r) => ({
+        hotelId: r.hotel_id,
+        hotelName: r.hotel_name,
+        address: r.address,
+        district: r.district,
+        pincode: r.pincode,
+        cuisine: r.cuisine,
+        contactNumber: r.contact_number,
+        latitude: r.latitude ? parseFloat(r.latitude) : null,
+        longitude: r.longitude ? parseFloat(r.longitude) : null,
+        locationStatus: r.location_status || "location_pending",
+        locationSource: r.location_source,
+        locationVerifiedAt: r.location_verified_at,
+        partnerStatus: r.partner_status || "unverified",
+        verificationStatus: r.verification_status,
+        status: r.status,
+        isDirectoryListing: Boolean(r.is_directory_listing),
+        owner: r.merchant_user_id ? {
+          userId: r.merchant_user_id,
+          name: r.merchant_name,
+          email: r.merchant_email,
+        } : null,
+        claim: r.claimed_by_merchant_id ? {
+          claimantId: r.claimed_by_merchant_id,
+          claimantName: r.claimant_name,
+          claimantEmail: r.claimant_email,
+          claimStatus: r.claim_status,
+          claimDocuments: r.claim_documents,
+          requestedAt: r.claim_requested_at,
+        } : null,
+      })),
+    });
+  } catch (err) {
+    console.error("Error in GET /api/admin/directory-hotels:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/admin/hotels/:id/location
+ * Admin corrects address, coordinates, and verifies map pin
+ */
+router.put("/hotels/:id/location", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { address, district, pincode, latitude, longitude, verifyPin = true } = req.body;
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+
+    if (isNaN(lat) || lat < -90 || lat > 90 || isNaN(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({ error: "Valid latitude and longitude are required to verify map pin." });
+    }
+
+    const locationStatus = verifyPin ? "verified" : "location_pending";
+    const locationSource = "admin_verified";
+
+    await pool.query(
+      `UPDATE dim_hotels 
+       SET address = COALESCE(?, address),
+           district = COALESCE(?, district),
+           pincode = COALESCE(?, pincode),
+           latitude = ?,
+           longitude = ?,
+           location_status = ?,
+           location_source = ?,
+           location_verified_at = NOW()
+       WHERE hotel_id = ?`,
+      [address || null, district || null, pincode || null, lat, lng, locationStatus, locationSource, id]
+    );
+
+    // Also update any active food listings for this hotel to synchronize coordinates
+    await pool.query(
+      "UPDATE fact_listings SET latitude = ?, longitude = ? WHERE hotel_id = ?",
+      [lat, lng, id]
+    );
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: "Hotel location and map pin verified successfully.",
+      hotelId: id,
+      latitude: lat,
+      longitude: lng,
+      locationStatus,
+      hotel: {
+        id,
+        hotelId: id,
+        latitude: lat,
+        longitude: lng,
+        locationStatus,
+      },
+    });
+  } catch (err) {
+    console.error("Error updating hotel location:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/hotel-claims
+ * Review pending ownership claims on directory hotels
+ */
+router.get("/hotel-claims", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT h.*, u.full_name as claimant_name, u.email as claimant_email, u.phone_number as claimant_phone
+       FROM dim_hotels h
+       JOIN dim_users u ON h.claimed_by_merchant_id = u.user_id
+       WHERE h.claim_status = 'pending'
+       ORDER BY h.claim_requested_at DESC`
+    );
+
+    return res.json({
+      ok: true,
+      success: true,
+      count: rows.length,
+      claims: rows.map((r) => ({
+        hotelId: r.hotel_id,
+        hotelName: r.hotel_name,
+        address: r.address,
+        claimant: {
+          userId: r.claimed_by_merchant_id,
+          name: r.claimant_name,
+          email: r.claimant_email,
+          phone: r.claimant_phone,
+        },
+        claimDocuments: r.claim_documents,
+        claimRequestedAt: r.claim_requested_at,
+      })),
+    });
+  } catch (err) {
+    console.error("Error in GET /api/admin/hotel-claims:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/hotel-claims/:id/approve
+ * Admin approves ownership claim and assigns hotel to merchant
+ */
+router.post("/hotel-claims/:id/approve", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [rows] = await pool.query("SELECT * FROM dim_hotels WHERE hotel_id = ?", [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Hotel not found." });
+    }
+
+    const hotel = rows[0];
+    const claimantId = hotel.claimed_by_merchant_id;
+    if (!claimantId) {
+      return res.status(400).json({ error: "No pending claim found for this hotel." });
+    }
+
+    // Approve claim: assign owner, set partner_status = 'verified', status = 'APPROVED'
+    await pool.query(
+      `UPDATE dim_hotels 
+       SET merchant_user_id = ?,
+           claim_status = 'approved',
+           partner_status = 'verified',
+           verification_status = 'approved',
+           status = 'APPROVED'
+       WHERE hotel_id = ?`,
+      [claimantId, id]
+    );
+
+    // Also approve merchant user account if pending
+    await pool.query(
+      "UPDATE dim_users SET status = 'APPROVED' WHERE user_id = ?",
+      [claimantId]
+    );
+
+    // Promote any draft listings for this hotel to active
+    await pool.query(
+      "UPDATE fact_listings SET status = 'active' WHERE hotel_id = ? AND status = 'draft'",
+      [id]
+    );
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: `Ownership of "${hotel.hotel_name}" approved and granted to merchant.`,
+      hotelId: id,
+      ownerId: claimantId,
+      partnerStatus: "verified",
+    });
+  } catch (err) {
+    console.error("Error approving hotel claim:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/hotel-claims/:id/reject
+ * Admin rejects ownership claim
+ */
+router.post("/hotel-claims/:id/reject", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason = "Ownership documents could not be verified." } = req.body;
+
+    await pool.query(
+      `UPDATE dim_hotels 
+       SET claim_status = 'rejected',
+           rejection_reason = ?
+       WHERE hotel_id = ?`,
+      [reason, id]
+    );
+
+    return res.json({
+      ok: true,
+      message: "Hotel ownership claim rejected.",
+      hotelId: id,
+    });
+  } catch (err) {
+    console.error("Error rejecting hotel claim:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/admin/hotels/:id/status
+ * Admin updates hotel partner & verification status (APPROVED, REJECTED, SUSPENDED)
+ */
+router.put("/hotels/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, partnerStatus, rejectionReason } = req.body;
+
+    const finalStatus = (status || "").toUpperCase();
+    const finalPartnerStatus = partnerStatus || (finalStatus === "APPROVED" ? "verified" : finalStatus === "SUSPENDED" ? "suspended" : "rejected");
+    const verificationStatus = finalStatus === "APPROVED" ? "approved" : finalStatus === "REJECTED" ? "rejected" : "under_review";
+
+    await pool.query(
+      `UPDATE dim_hotels 
+       SET status = ?,
+           partner_status = ?,
+           verification_status = ?,
+           rejection_reason = ?
+       WHERE hotel_id = ?`,
+      [finalStatus, finalPartnerStatus, verificationStatus, rejectionReason || null, id]
+    );
+
+    // If suspended or rejected, pause all active public listings (Module 7 rule)
+    if (finalStatus === "SUSPENDED" || finalStatus === "REJECTED") {
+      await pool.query(
+        "UPDATE fact_listings SET status = 'cancelled' WHERE hotel_id = ? AND status = 'active'",
+        [id]
+      );
+    }
+
+    return res.json({
+      ok: true,
+      message: `Hotel status updated to ${finalStatus} (${finalPartnerStatus}).`,
+      hotelId: id,
+      status: finalStatus,
+      partnerStatus: finalPartnerStatus,
+    });
+  } catch (err) {
+    console.error("Error updating hotel status:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
 

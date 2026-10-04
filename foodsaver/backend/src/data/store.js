@@ -5,6 +5,14 @@ const crypto = require("crypto");
 const { pool } = require("../config/database");
 const { generateId, generateClaimToken } = require("../utils/generateId");
 const { fetchFoodImage } = require("../services/foodImageService");
+const {
+  sendOrderConfirmationEmail,
+  sendOrderStatusUpdateEmail,
+  sendDeliverySuccessEmail,
+  sendCancellationRefundEmail,
+  sendMerchantOnboardingStatusEmail,
+} = require("../services/emailService");
+const { createNotification } = require("../services/notificationService");
 
 const SINGLE_ADMIN = {
   id: "admin-1",
@@ -12,12 +20,6 @@ const SINGLE_ADMIN = {
   name: "Platform Admin",
   role: "admin",
 };
-
-const NGO_PARTNERS = [
-  { id: "ngo-1", name: "Second Harvest Community Kitchen", radiusKm: 5 },
-  { id: "ngo-2", name: "Bright Table Food Rescue", radiusKm: 8 },
-  { id: "ngo-3", name: "Neighbors Fed Collective", radiusKm: 6 },
-];
 
 async function resolveAdminUserId(adminUserId, conn = pool) {
   if (adminUserId) {
@@ -49,8 +51,8 @@ function formatHotelRow(row, menuItems = [], listings = []) {
     deliveryTime: row.delivery_time_text || "10–15 mins",
     logo: row.logo_url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80",
     coverImage: row.cover_image_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
-    status: (row.verification_status || "pending").toUpperCase(),
-    verificationStatus: row.verification_status || "pending",
+    status: (row.status || row.verification_status || "pending").toUpperCase(),
+    verificationStatus: (row.verification_status || (row.status === "APPROVED" ? "approved" : "pending")).toLowerCase(),
     rejectionReason: row.rejection_reason || "",
     createdAt: new Date(row.created_at || Date.now()).getTime(),
     updatedAt: new Date(row.updated_at || Date.now()).getTime(),
@@ -61,6 +63,20 @@ function formatHotelRow(row, menuItems = [], listings = []) {
 
 function formatListingRow(row) {
   if (!row) return null;
+  const origPrice = Number(row.original_price || 0);
+  const discPrice = Number(row.discount_price || 0);
+  const discountPercentage = origPrice > 0 ? Math.round(((origPrice - discPrice) / origPrice) * 100) : 0;
+  const expiresAtMs = new Date(row.expires_at || Date.now()).getTime();
+  const collectionDeadlineMs = row.collection_deadline
+    ? new Date(row.collection_deadline).getTime()
+    : expiresAtMs;
+  const nowMs = Date.now();
+  const msRemaining = Math.max(0, collectionDeadlineMs - nowMs);
+  const minutesRemaining = Math.round(msRemaining / (60 * 1000));
+  const isClosingSoon = row.status === "active" && minutesRemaining > 0 && minutesRemaining <= 60;
+  const isLastChance = row.status === "active" && (minutesRemaining <= 30 || Number(row.quantity_available) <= 2);
+  const isAlmostSoldOut = row.status === "active" && Number(row.quantity_available) > 0 && Number(row.quantity_available) <= 3;
+
   return {
     id: row.listing_id,
     merchantId: row.merchant_user_id || row.hotel_id,
@@ -73,8 +89,9 @@ function formatListingRow(row) {
     category: row.category_name || "Bakery",
     isVeg: Boolean(row.is_veg),
     rating: Number(row.rating || 4.5),
-    originalPrice: Number(row.original_price || 0),
-    discountPrice: Number(row.discount_price || 0),
+    originalPrice: origPrice,
+    discountPrice: discPrice,
+    discountPercentage,
     quantityTotal: Number(row.quantity_total || 1),
     quantityAvailable: Number(row.quantity_available || 0),
     address: row.address || "",
@@ -84,9 +101,24 @@ function formatListingRow(row) {
     pickupWindowStart: row.pickup_window_start ? String(row.pickup_window_start).slice(0, 5) : "20:30",
     pickupWindowEnd: row.pickup_window_end ? String(row.pickup_window_end).slice(0, 5) : "22:00",
     createdAt: new Date(row.created_at || Date.now()).getTime(),
-    expiresAt: new Date(row.expires_at || Date.now()).getTime(),
+    expiresAt: expiresAtMs,
     status: row.status || "active",
     notifiedNgo: Boolean(row.notified_ngo),
+    // Night-Sale Fields
+    isNightSale: Boolean(row.is_night_sale),
+    saleWindowStart: row.sale_window_start ? String(row.sale_window_start).slice(0, 5) : (row.pickup_window_start ? String(row.pickup_window_start).slice(0, 5) : "18:00"),
+    saleWindowEnd: row.sale_window_end ? String(row.sale_window_end).slice(0, 5) : (row.pickup_window_end ? String(row.pickup_window_end).slice(0, 5) : "23:00"),
+    collectionDeadline: collectionDeadlineMs,
+    deliverySupported: Boolean(row.delivery_supported),
+    safeStorageInfo: row.safe_storage_info || "Temperature-controlled display",
+    foodPrepTime: row.food_prep_time || "Fresh daily surplus",
+    foodSafetyApproved: row.food_safety_approved !== undefined ? Boolean(row.food_safety_approved) : true,
+    eligibleForNgo: row.eligible_for_ngo !== undefined ? Boolean(row.eligible_for_ngo) : true,
+    // Dynamic indicators
+    isClosingSoon,
+    isLastChance,
+    isAlmostSoldOut,
+    minutesRemaining,
   };
 }
 
@@ -140,7 +172,7 @@ function formatVerificationRow(row) {
     role: row.target_role,
     applicantName: row.applicant_name || row.full_name || row.business_name,
     businessName: row.business_name,
-    mobile: row.phone_number || "+91 98765 00000",
+    mobile: row.phone_number || "",
     email: row.email,
     address: row.address || "Kovilpatti",
     category: row.category,
@@ -276,7 +308,7 @@ async function createHotel(payload = {}) {
       await connection.query(
         `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, phone_number, is_active)
          VALUES (?, 'merchant', ?, 'placeholder_hash', ?, ?, TRUE)`,
-        [actualMerchantUserId, email, rawMerchantName, payload.contactNumber || payload.mobile || "+91 98765 43210"]
+        [actualMerchantUserId, email, rawMerchantName, payload.contactNumber || payload.mobile || null]
       );
     }
 
@@ -294,11 +326,11 @@ async function createHotel(payload = {}) {
         `UPDATE dim_hotels SET hotel_name = ?, description = ?, address = ?, location_city = ?, contact_number = ?, cuisine = ?, verification_status = ? WHERE hotel_id = ?`,
         [
           payload.hotelName || payload.businessName || rawMerchantName,
-          payload.description || "Fresh surplus food partner offering daily closing deals.",
-          payload.address || "Kovilpatti Main Road, Kovilpatti",
+          payload.description || "",
+          payload.address || "",
           payload.location || "Kovilpatti",
-          payload.contactNumber || payload.mobile || "+91 98765 43210",
-          payload.cuisine || payload.category || "South Indian • Bakery • Fast Food",
+          payload.contactNumber || payload.mobile || "",
+          payload.cuisine || payload.category || "",
           verificationStatus,
           targetHotelId,
         ]
@@ -311,11 +343,11 @@ async function createHotel(payload = {}) {
           id,
           actualMerchantUserId,
           payload.hotelName || payload.businessName || rawMerchantName,
-          payload.description || "Fresh surplus food partner offering daily closing deals.",
-          payload.address || "Kovilpatti Main Road, Kovilpatti",
+          payload.description || "",
+          payload.address || "",
           payload.location || "Kovilpatti",
-          payload.contactNumber || payload.mobile || "+91 98765 43210",
-          payload.cuisine || payload.category || "South Indian • Bakery • Fast Food",
+          payload.contactNumber || payload.mobile || "",
+          payload.cuisine || payload.category || "",
           payload.openingHours || "17:00 - 22:30",
           payload.logo || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80",
           payload.coverImage || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
@@ -579,9 +611,37 @@ async function createListing(payload) {
     }
   }
 
+  const isNightSale = Boolean(payload.isNightSale || payload.is_night_sale);
+  const saleWindowStart = payload.saleWindowStart || payload.sale_window_start || payload.pickupWindowStart || "18:00";
+  const saleWindowEnd = payload.saleWindowEnd || payload.sale_window_end || payload.pickupWindowEnd || "23:00";
+
+  let collectionDeadline = null;
+  if (payload.collectionDeadline || payload.collection_deadline) {
+    const parsedDate = new Date(payload.collectionDeadline || payload.collection_deadline);
+    if (!isNaN(parsedDate.getTime()) && parsedDate.getTime() > now) {
+      collectionDeadline = parsedDate;
+      expiresAt = parsedDate;
+    }
+  } else if (isNightSale) {
+    collectionDeadline = expiresAt;
+  }
+
+  const deliverySupported = Boolean(payload.deliverySupported || payload.delivery_supported);
+  const safeStorageInfo = payload.safeStorageInfo || payload.safe_storage_info || "Temperature-controlled display";
+  const foodPrepTime = payload.foodPrepTime || payload.food_prep_time || "Fresh daily surplus";
+  const foodSafetyApproved = payload.foodSafetyApproved !== undefined ? Boolean(payload.foodSafetyApproved) : true;
+  const eligibleForNgo = payload.eligibleForNgo !== undefined ? Boolean(payload.eligibleForNgo) : true;
+
   await pool.query(
-    `INSERT INTO listings (listing_id, hotel_id, menu_item_id, item_name, description, category_id, is_veg, original_price, discount_price, quantity_total, quantity_available, address, latitude, longitude, image_url, pickup_window_start, pickup_window_end, status, notified_ngo, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', FALSE, ?)`,
+    `INSERT INTO fact_listings (
+      listing_id, hotel_id, menu_item_id, item_name, description, category_id, is_veg, 
+      original_price, discount_price, quantity_total, quantity_available, address, 
+      latitude, longitude, image_url, pickup_window_start, pickup_window_end, status, 
+      notified_ngo, expires_at, is_night_sale, sale_window_start, sale_window_end, 
+      collection_deadline, delivery_supported, safe_storage_info, food_prep_time, 
+      food_safety_approved, eligible_for_ngo
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', FALSE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       hotelProfile.id,
@@ -601,6 +661,15 @@ async function createListing(payload) {
       payload.pickupWindowStart ? `${payload.pickupWindowStart}:00` : "20:30:00",
       payload.pickupWindowEnd ? `${payload.pickupWindowEnd}:00` : "22:00:00",
       expiresAt,
+      isNightSale,
+      payload.pickupWindowStart ? `${payload.pickupWindowStart}:00` : `${saleWindowStart}:00`,
+      payload.pickupWindowEnd ? `${payload.pickupWindowEnd}:00` : `${saleWindowEnd}:00`,
+      collectionDeadline,
+      deliverySupported,
+      safeStorageInfo,
+      foodPrepTime,
+      foodSafetyApproved,
+      eligibleForNgo,
     ]
   );
 
@@ -691,11 +760,35 @@ async function updateListing(id, updates = {}, merchantIdentifier = "") {
     newAvailable = Math.max(0, listing.quantityAvailable + diff);
   }
 
+  if (updates.quantityAvailable !== undefined) {
+    newAvailable = Math.max(0, Number(updates.quantityAvailable));
+    if (newAvailable > newTotal) {
+      newTotal = newAvailable;
+    }
+    if (newAvailable === 0 && !updates.status) {
+      updates.status = "soldout";
+    } else if (listing.status === "soldout" && newAvailable > 0 && !updates.status) {
+      updates.status = "active";
+    }
+  }
+
+  const isNightSaleVal = updates.isNightSale !== undefined ? Boolean(updates.isNightSale) : null;
+
   await pool.query(
-    `UPDATE listings SET item_name = COALESCE(?, item_name), description = COALESCE(?, description),
-     original_price = COALESCE(?, original_price), discount_price = COALESCE(?, discount_price),
-     quantity_total = ?, quantity_available = ?, address = COALESCE(?, address), image_url = COALESCE(?, image_url),
-     status = COALESCE(?, status) WHERE listing_id = ?`,
+    `UPDATE fact_listings SET 
+      item_name = COALESCE(?, item_name), 
+      description = COALESCE(?, description),
+      original_price = COALESCE(?, original_price), 
+      discount_price = COALESCE(?, discount_price),
+      quantity_total = ?, 
+      quantity_available = ?, 
+      address = COALESCE(?, address), 
+      image_url = COALESCE(?, image_url),
+      status = COALESCE(?, status),
+      is_night_sale = COALESCE(?, is_night_sale),
+      safe_storage_info = COALESCE(?, safe_storage_info),
+      food_prep_time = COALESCE(?, food_prep_time)
+     WHERE listing_id = ?`,
     [
       updates.itemName || null,
       updates.description || null,
@@ -706,6 +799,9 @@ async function updateListing(id, updates = {}, merchantIdentifier = "") {
       updates.address || null,
       updates.imageUrl || null,
       updates.status || null,
+      isNightSaleVal,
+      updates.safeStorageInfo || null,
+      updates.foodPrepTime || null,
       id,
     ]
   );
@@ -760,7 +856,18 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
     const lRow = rows[0];
     if (lRow.status !== "active") {
       await connection.rollback();
-      return { error: "unavailable" };
+      return { error: "unavailable", message: "This food offer is currently unavailable." };
+    }
+
+    const deadlineMs = lRow.collection_deadline
+      ? new Date(lRow.collection_deadline).getTime()
+      : new Date(lRow.expires_at).getTime();
+    if (deadlineMs <= Date.now()) {
+      await connection.rollback();
+      return {
+        error: "expired",
+        message: "This surplus food offer collection deadline has expired. Orders cannot be placed after closing.",
+      };
     }
 
     const qty = Math.max(1, Number(quantity) || 1);
@@ -827,6 +934,45 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
       pickupWindowEnd: lRow.pickup_window_end ? String(lRow.pickup_window_end).slice(0, 5) : "22:00",
       status: "pending",
     };
+
+    // Asynchronously dispatch Order Confirmation Email & Notifications
+    const customerEmail = (cUser.length > 0 && cUser[0].email) ? cUser[0].email : (String(custId).includes("@") ? custId : null);
+    if (customerEmail) {
+      sendOrderConfirmationEmail({
+        to: customerEmail,
+        customerName: customerName || custId,
+        orderId: claimId,
+        token: claimToken,
+        itemName: lRow.item_name,
+        quantity: qty,
+        totalAmount: pricePaid,
+        merchantName: lRow.hotel_name || lRow.merchant_name,
+        address: lRow.address,
+        pickupWindow: lRow.pickup_window_end ? String(lRow.pickup_window_end).slice(0, 5) : "22:00",
+      }).catch((e) => console.warn("[EmailService] Order confirmation email error:", e.message));
+    }
+
+    if (validCustomerUserId) {
+      createNotification({
+        userId: validCustomerUserId,
+        claimId,
+        listingId: id,
+        type: "ORDER",
+        title: "Order Placed Successfully",
+        message: `Your reservation for ${lRow.item_name} at ${lRow.hotel_name || lRow.merchant_name} is confirmed. Token: ${claimToken}`,
+      }).catch(() => {});
+    }
+
+    if (lRow.merchant_user_id) {
+      createNotification({
+        userId: lRow.merchant_user_id,
+        claimId,
+        listingId: id,
+        type: "ORDER",
+        title: "New Customer Order Received",
+        message: `${customerName || "Customer"} reserved ${qty}x ${lRow.item_name} (₹${pricePaid}). Token: ${claimToken}`,
+      }).catch(() => {});
+    }
 
     return { claim, listing: updatedListing };
   } catch (err) {
@@ -1139,20 +1285,21 @@ async function sweepExpiredListings(onExpired) {
     const [rows] = await pool.query(
       `SELECT l.*, h.hotel_name, u.full_name as merchant_name
        FROM listings l JOIN hotels h ON l.hotel_id = h.hotel_id JOIN users u ON h.merchant_user_id = u.user_id
-       WHERE l.status = 'active' AND l.expires_at <= NOW()`
+       WHERE l.status = 'active' AND (l.expires_at <= NOW() OR (l.collection_deadline IS NOT NULL AND l.collection_deadline <= NOW()))`
     );
 
     for (const lRow of rows) {
       const listing = formatListingRow(lRow);
-      if (lRow.quantity_available > 0) {
-        await pool.query("UPDATE listings SET status = 'expired_donatable', notified_ngo = TRUE WHERE listing_id = ?", [lRow.listing_id]);
+      const isEligibleForNgo = lRow.eligible_for_ngo === undefined || Boolean(lRow.eligible_for_ngo);
+      if (lRow.quantity_available > 0 && isEligibleForNgo) {
+        await pool.query("UPDATE fact_listings SET status = 'expired_donatable', notified_ngo = TRUE WHERE listing_id = ?", [lRow.listing_id]);
         listing.status = "expired_donatable";
         listing.notifiedNgo = true;
 
         const notif = await createNgoNotification(listing);
         onExpired(listing, notif);
       } else {
-        await pool.query("UPDATE listings SET status = 'soldout' WHERE listing_id = ?", [lRow.listing_id]);
+        await pool.query("UPDATE fact_listings SET status = 'soldout' WHERE listing_id = ?", [lRow.listing_id]);
         listing.status = "soldout";
         onExpired(listing, null);
       }
@@ -1245,7 +1392,7 @@ async function createVerificationApplication(payload) {
       await connection.query(
         `INSERT INTO users (user_id, role_id, email, password_hash, full_name, phone_number, is_active)
          VALUES (?, ?, ?, 'placeholder_hash', ?, ?, TRUE)`,
-        [userId, role, payload.email || `${userId}@foodsaver.com`, applicantName, payload.mobile || "+91 98765 00000"]
+        [userId, role, payload.email || `${userId}@foodsaver.com`, applicantName, payload.mobile || null]
       );
     } else {
       actualUserId = uRows[0].user_id;
@@ -1274,10 +1421,10 @@ async function createVerificationApplication(payload) {
           generateId("htl"),
           actualUserId,
           businessName,
-          "Fresh surplus food partner offering daily closing deals.",
-          payload.address || "Kovilpatti",
-          payload.mobile || "+91 98765 00000",
-          payload.category || "South Indian • Bakery",
+          payload.description || "",
+          payload.address || "",
+          payload.mobile || null,
+          payload.category || "",
         ]
       );
     }
@@ -1304,6 +1451,28 @@ async function updateVerificationStatus(id, newStatus, reason = "") {
   );
 
   const updated = await getVerificationByEmailOrName(id);
+
+  // Send onboarding status email & in-app notification
+  if (app.email) {
+    sendMerchantOnboardingStatusEmail({
+      to: app.email,
+      merchantName: app.businessName || app.applicantName || "Partner",
+      status: newStatus.toUpperCase(),
+      reason,
+    }).catch((e) => console.warn("[EmailService] Verification status email error:", e.message));
+  }
+
+  if (app.userId) {
+    createNotification({
+      userId: app.userId,
+      type: "VERIFICATION",
+      title: `Verification Status: ${newStatus.toUpperCase()}`,
+      message: newStatus.toUpperCase() === "APPROVED"
+        ? "Congratulations! Your partner account has been verified and approved."
+        : `Your application status is: ${newStatus}. ${reason || ""}`,
+    }).catch(() => {});
+  }
+
   return { ok: true, application: updated };
 }
 
@@ -1541,7 +1710,7 @@ async function submitMerchantOnboarding(userId, wizardData) {
 
     await connection.query(
       `UPDATE dim_users SET full_name = ?, phone_number = ?, status = 'PENDING' WHERE user_id = ?`,
-      [wizardData.ownerName || wizardData.fullName || hotelName, wizardData.mobile || "+91 98765 00000", userId]
+      [wizardData.ownerName || wizardData.fullName || hotelName, wizardData.mobile || null, userId]
     );
 
     await connection.query(
@@ -1564,9 +1733,9 @@ async function submitMerchantOnboarding(userId, wizardData) {
         delivery_radius = VALUES(delivery_radius), delivery_fee = VALUES(delivery_fee),
         facilities_amenities = VALUES(facilities_amenities), status = 'SUBMITTED', verification_status = 'under_review'`,
       [
-        hotelId, userId, hotelName, wizardData.description || "", wizardData.address || "Kovilpatti",
+        hotelId, userId, hotelName, wizardData.description || "", wizardData.address || "",
         wizardData.city || "Kovilpatti", Number(wizardData.latitude || 9.1724), Number(wizardData.longitude || 77.8694),
-        wizardData.contactNumber || wizardData.mobile || "+91 98765 00000",
+        wizardData.contactNumber || wizardData.mobile || "",
         cuisineStr, hoursStr, wizardData.logo || "", wizardData.coverImage || "", wizardData.businessType || "Restaurant",
         wizardData.yearEstablished || null, wizardData.seatingCapacity || 0, wizardData.foodType || "Both",
         Boolean(wizardData.deliveryAvailable !== false), Boolean(wizardData.takeawayAvailable !== false), Boolean(wizardData.dineInAvailable !== false),
@@ -2084,7 +2253,7 @@ async function submitNgoOnboarding(ngoUserId, onboardingData) {
       await connection.query(
         `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, phone_number, status, is_active, created_at, updated_at)
          VALUES (?, 'ngo', ?, 'hash_placeholder', ?, ?, 'SUBMITTED', TRUE, NOW(), NOW())`,
-        [ngoUserId, defaultEmail.toLowerCase().trim(), onboardingData.contactPersonName || onboardingData.fullName || onboardingData.ngoName || "NGO Partner", onboardingData.contactNumber || onboardingData.phone || "+91 98765 00000"]
+        [ngoUserId, defaultEmail.toLowerCase().trim(), onboardingData.contactPersonName || onboardingData.fullName || onboardingData.ngoName || "NGO Partner", onboardingData.contactNumber || onboardingData.phone || null]
       );
     } else {
       await connection.query(
@@ -2114,7 +2283,7 @@ async function submitNgoOnboarding(ngoUserId, onboardingData) {
         onboardingData.yearEstablished ? Number(onboardingData.yearEstablished) : null,
         onboardingData.description || "", onboardingData.website || "", fullAddress,
         Number(onboardingData.latitude || 9.1724), Number(onboardingData.longitude || 77.8694),
-        onboardingData.contactNumber || onboardingData.phone || "+91 98765 00000",
+        onboardingData.contactNumber || onboardingData.phone || "",
         onboardingData.serviceRadiusKm ? Number(onboardingData.serviceRadiusKm) : 5.0
       ]
     );
@@ -2528,6 +2697,42 @@ async function updateNgoPickupStatus(ngoUserId, donationId, status) {
 
 // --- REAL-TIME ORDER TRACKING SYSTEM ---
 
+function formatClaimRow(r) {
+  if (!r) return null;
+  return {
+    id: r.claim_id,
+    claimId: r.claim_id,
+    token: r.claim_token,
+    claimToken: r.claim_token,
+    listingId: r.listing_id,
+    hotelId: r.hotel_id,
+    merchantId: r.merchant_user_id || r.hotel_id,
+    merchantUserId: r.merchant_user_id || r.hotel_id,
+    merchantName: r.merchant_name || r.hotel_name || "Partner Shop",
+    hotelName: r.hotel_name || r.merchant_name || "Partner Shop",
+    itemName: r.item_name || "",
+    address: r.address || "",
+    imageUrl: r.image_url || "",
+    customerId: r.customer_user_id,
+    customerUserId: r.customer_user_id,
+    customerName: r.customer_name || "Customer",
+    quantity: Number(r.quantity || 1),
+    unitPrice: Number(r.unit_price || 0),
+    pricePaid: Number(r.price_paid || 0),
+    totalAmount: Number(r.price_paid || 0),
+    status: (r.status || "PENDING").toUpperCase(),
+    trackingActive: Boolean(r.tracking_active),
+    lastLatitude: r.last_latitude !== null && r.last_latitude !== undefined ? Number(r.last_latitude) : null,
+    lastLongitude: r.last_longitude !== null && r.last_longitude !== undefined ? Number(r.last_longitude) : null,
+    latitude: r.last_latitude !== null && r.last_latitude !== undefined ? Number(r.last_latitude) : (r.merchant_latitude ? Number(r.merchant_latitude) : 9.1724),
+    longitude: r.last_longitude !== null && r.last_longitude !== undefined ? Number(r.last_longitude) : (r.merchant_longitude ? Number(r.merchant_longitude) : 77.8694),
+    lastLocationUpdatedAt: r.last_location_updated_at ? new Date(r.last_location_updated_at).getTime() : Date.now(),
+    claimedAt: r.claimed_at ? new Date(r.claimed_at).getTime() : Date.now(),
+    collectedAt: r.collected_at ? new Date(r.collected_at).getTime() : null,
+    pickupWindowEnd: r.pickup_window_end ? String(r.pickup_window_end).slice(0, 5) : "22:00",
+  };
+}
+
 async function getOrderDetails(orderId) {
   if (!orderId) return null;
   const target = String(orderId).trim();
@@ -2573,6 +2778,33 @@ async function confirmOrder(orderId, merchantUserId) {
   );
 
   const updated = await getOrderDetails(order.id);
+
+  // Send status update email & notification
+  if (order.customerEmail || order.customerId) {
+    const custEmail = order.customerEmail || (order.customerId?.includes("@") ? order.customerId : null);
+    if (custEmail) {
+      sendOrderStatusUpdateEmail({
+        to: custEmail,
+        customerName: order.customerName || "Customer",
+        orderId: order.id,
+        token: order.token,
+        status: "CONFIRMED",
+        merchantName: order.merchantName,
+        itemName: order.itemName,
+      }).catch((e) => console.warn("[EmailService] Order confirmed email error:", e.message));
+    }
+
+    if (order.customerId) {
+      createNotification({
+        userId: order.customerId,
+        claimId: order.id,
+        type: "ORDER",
+        title: "Order Confirmed by Merchant",
+        message: `${order.merchantName} has confirmed your order #${order.id}.`,
+      }).catch(() => {});
+    }
+  }
+
   return { ok: true, order: updated };
 }
 
@@ -2821,6 +3053,56 @@ async function completeOrderHandover(orderId, merchantUserId) {
     await connection.commit();
 
     const updated = await getOrderDetails(orderRow.claim_id);
+
+    // Send Professional Delivery / Collection Success Email Immediately (Idempotency control inside sendDeliverySuccessEmail)
+    try {
+      const [uRows] = await pool.query(
+        "SELECT email, full_name FROM dim_users WHERE user_id = ? OR email = ?",
+        [updated.customerId, updated.customerId]
+      );
+      const customerEmail = uRows.length > 0 ? uRows[0].email : (String(updated.customerId).includes("@") ? updated.customerId : null);
+
+      if (customerEmail) {
+        sendDeliverySuccessEmail({
+          to: customerEmail,
+          customerName: updated.customerName || (uRows.length > 0 ? uRows[0].full_name : "Valued Customer"),
+          orderId: updated.id,
+          token: updated.token,
+          itemName: updated.itemName,
+          quantity: updated.quantity,
+          totalAmount: updated.totalAmount || updated.pricePaid,
+          merchantName: updated.merchantName,
+          address: updated.address || "Store Counter Pickup",
+          deliveredAt: new Date(),
+          paymentMethod: updated.paymentMethod || "Digital Verification",
+          paymentStatus: "Paid & Collected",
+        }).catch((e) => console.warn("[EmailService] Delivery success email error:", e.message));
+      }
+    } catch (emailErr) {
+      console.warn("Delivery email lookup warning:", emailErr.message);
+    }
+
+    // In-app notifications
+    if (updated.customerId) {
+      createNotification({
+        userId: updated.customerId,
+        claimId: updated.id,
+        type: "ORDER_DELIVERED",
+        title: "🎉 Order Delivered & Verified",
+        message: `Your order for ${updated.itemName} at ${updated.merchantName} was collected successfully. Thank you for saving surplus food!`,
+      }).catch(() => {});
+    }
+
+    if (updated.merchantId) {
+      createNotification({
+        userId: updated.merchantId,
+        claimId: updated.id,
+        type: "ORDER_COMPLETED",
+        title: "✓ Customer Handover Completed",
+        message: `Order #${updated.id} (${updated.itemName}) was handed over to customer.`,
+      }).catch(() => {});
+    }
+
     return {
       ok: true,
       completed: true,
@@ -2834,6 +3116,55 @@ async function completeOrderHandover(orderId, merchantUserId) {
   } finally {
     if (connection) connection.release();
   }
+}
+
+async function getOrderTrackingState(orderId) {
+  const order = await getOrderDetails(orderId);
+  if (!order) return null;
+
+  return {
+    orderId: order.id,
+    status: order.status,
+    trackingActive: Boolean(order.trackingActive),
+    merchantLocation: {
+      latitude: Number(order.lastLatitude || order.latitude || 9.1724),
+      longitude: Number(order.lastLongitude || order.longitude || 77.8694),
+      updatedAt: order.lastLocationUpdatedAt || Date.now(),
+    },
+  };
+}
+
+async function updateOrderTrackingLocation(orderId, merchantUserId, { latitude, longitude, accuracy = 10 } = {}) {
+  const order = await getOrderDetails(orderId);
+  if (!order) return { error: "not_found", message: "Order not found." };
+
+  if (["DELIVERED", "COMPLETED", "COLLECTED", "PICKED_UP", "CANCELLED"].includes(order.status) || order.trackingActive === false) {
+    return { error: "tracking_ended", message: "Tracking session has ended for this completed order." };
+  }
+
+  const finalLat = Number(latitude);
+  const finalLng = Number(longitude);
+  if (isNaN(finalLat) || isNaN(finalLng)) {
+    return { error: "invalid_coordinates", message: "Valid coordinates required." };
+  }
+
+  await pool.query(
+    `UPDATE fact_claims
+     SET last_latitude = ?, last_longitude = ?, last_location_updated_at = NOW()
+     WHERE claim_id = ? OR claim_token = ?`,
+    [finalLat, finalLng, order.id, order.token]
+  );
+
+  return {
+    ok: true,
+    orderId: order.id,
+    merchantLocation: {
+      latitude: finalLat,
+      longitude: finalLng,
+      accuracy,
+      updatedAt: Date.now(),
+    },
+  };
 }
 
 async function markOrderDelivered(orderId, merchantUserId) {
@@ -2855,7 +3186,40 @@ async function cancelOrder(orderId, userId) {
     [order.id]
   );
 
+  // Restore inventory safely
+  if (order.listingId && order.quantity) {
+    await pool.query(
+      `UPDATE fact_listings SET quantity_available = quantity_available + ?, status = IF(status = 'soldout', 'active', status) WHERE listing_id = ?`,
+      [order.quantity, order.listingId]
+    ).catch((e) => console.warn("Restore stock error:", e.message));
+  }
+
   const updated = await getOrderDetails(order.id);
+
+  // Send cancellation email & notification
+  if (order.customerEmail || order.customerId) {
+    const custEmail = order.customerEmail || (order.customerId?.includes("@") ? order.customerId : null);
+    if (custEmail) {
+      sendCancellationRefundEmail({
+        to: custEmail,
+        customerName: order.customerName || "Customer",
+        orderId: order.id,
+        reason: "Order cancelled",
+        refundAmount: order.totalAmount || order.pricePaid || 0,
+      }).catch((e) => console.warn("[EmailService] Cancellation email error:", e.message));
+    }
+
+    if (order.customerId) {
+      createNotification({
+        userId: order.customerId,
+        claimId: order.id,
+        type: "ORDER_CANCELLED",
+        title: "Order Cancelled",
+        message: `Your order #${order.id} has been cancelled.`,
+      }).catch(() => {});
+    }
+  }
+
   return { ok: true, order: updated };
 }
 
@@ -2936,12 +3300,280 @@ async function getOrderTrackingState(orderId) {
   };
 }
 
-module.exports = {
+async function getNightSaleListings({
+  lat = 9.1724,
+  lng = 77.8694,
+  radiusKm = 2.0,
+  category = "All",
+  searchQuery = "",
+  city = "Kovilpatti",
+} = {}) {
+  const latitude = Number(lat) || 9.1724;
+  const longitude = Number(lng) || 77.8694;
+  let radius = Number(radiusKm) || 2.0;
+  if (radius > 100) radius = radius / 1000;
+  if (radius > 50) radius = 50.0;
 
+  const [rows] = await pool.query(
+    `SELECT l.*, h.hotel_name, u.full_name as merchant_name, u.user_id as merchant_user_id, c.name as category_name,
+            (6371 * acos(LEAST(1.0, GREATEST(-1.0, cos(radians(?)) * cos(radians(l.latitude)) * cos(radians(l.longitude) - radians(?)) + sin(radians(?)) * sin(radians(l.latitude)))))) AS distance_km
+     FROM listings l
+     JOIN hotels h ON l.hotel_id = h.hotel_id
+     JOIN users u ON h.merchant_user_id = u.user_id
+     LEFT JOIN categories c ON l.category_id = c.category_id
+     WHERE (l.status = 'active' OR l.status = 'expired_donatable')
+     ORDER BY l.expires_at ASC`,
+    [latitude, longitude, latitude]
+  );
+
+  const nowMs = Date.now();
+  const allFormatted = rows.map((r) => {
+    const item = formatListingRow(r);
+    const dKm = Number(Number(r.distance_km || 0).toFixed(2));
+    item.distanceKm = dKm;
+    item.distance = dKm;
+    item.distanceFormatted = dKm < 1 ? `${Math.round(dKm * 1000)} m away` : `${dKm.toFixed(1)} km away`;
+    return item;
+  });
+
+  const filtered = allFormatted.filter((item) => {
+    if (category && category !== "All" && item.category !== category && !item.category?.toLowerCase().includes(category.toLowerCase())) {
+      return false;
+    }
+    if (searchQuery && searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const match = `${item.itemName} ${item.merchantName} ${item.hotelName} ${item.description} ${item.address}`.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  // 1. Available Tonight: active, stock > 0, collection deadline in future
+  const availableTonight = filtered.filter(
+    (item) => item.status === "active" && item.quantityAvailable > 0 && item.collectionDeadline > nowMs
+  );
+
+  // 2. Closing Soon: active, stock > 0, remaining time <= 60 minutes
+  const closingSoon = availableTonight.filter(
+    (item) => item.minutesRemaining > 0 && item.minutesRemaining <= 60
+  ).sort((a, b) => a.collectionDeadline - b.collectionDeadline);
+
+  // 3. Nearby Night Deals: within radiusKm, or sorted by distance
+  const nearbyWithinRadius = availableTonight.filter(
+    (item) => item.distanceKm <= radius
+  ).sort((a, b) => a.distanceKm - b.distanceKm);
+  const nearbyNightDeals = nearbyWithinRadius.length > 0
+    ? nearbyWithinRadius
+    : [...availableTonight].sort((a, b) => a.distanceKm - b.distanceKm);
+
+  // 4. Big Discounts Tonight: sorted by discountPercentage descending
+  const bigDiscountsTonight = [...availableTonight].sort(
+    (a, b) => b.discountPercentage - a.discountPercentage
+  );
+
+  // 5. Almost Sold Out: quantityAvailable <= 3 and > 0
+  const almostSoldOut = availableTonight.filter(
+    (item) => item.quantityAvailable > 0 && item.quantityAvailable <= 3
+  ).sort((a, b) => a.quantityAvailable - b.quantityAvailable);
+
+  // 6. Food Rescue for NGOs: listings eligible for NGO or expired_donatable, plus active NGO donations
+  const ngoEligibleListings = filtered.filter(
+    (item) => item.eligibleForNgo && (item.status === "expired_donatable" || (item.status === "active" && item.quantityAvailable > 0))
+  );
+
+  let activeDonations = [];
+  try {
+    const [donRows] = await pool.query(
+      `SELECT d.*, h.hotel_name, u.full_name as merchant_name
+       FROM fact_donations d
+       JOIN hotels h ON d.hotel_id = h.hotel_id
+       JOIN users u ON d.merchant_user_id = u.user_id
+       WHERE d.status IN ('DONATION_CREATED', 'NGO_NOTIFIED', 'NGO_ACCEPTED')
+       ORDER BY d.created_at DESC`
+    );
+    activeDonations = donRows.map((d) => ({
+      id: d.donation_id,
+      donationId: d.donation_id,
+      itemName: d.item_name,
+      hotelName: d.hotel_name,
+      merchantName: d.merchant_name || d.hotel_name,
+      quantity: d.quantity,
+      address: d.address,
+      description: d.description || "",
+      pickupDeadline: new Date(d.pickup_deadline).getTime(),
+      status: d.status,
+      isDonation: true,
+      category: "Surplus Food Rescue",
+      isVeg: true,
+    }));
+  } catch (donErr) {
+    console.warn("Active donations fetch note:", donErr.message);
+  }
+
+  const ngoFoodRescue = [
+    ...ngoEligibleListings,
+    ...activeDonations,
+  ];
+
+  return {
+    allDeals: availableTonight,
+    categories: {
+      availableTonight,
+      closingSoon,
+      nearbyNightDeals,
+      bigDiscountsTonight,
+      almostSoldOut,
+      ngoFoodRescue,
+    },
+    count: availableTonight.length,
+    radiusKm: radius,
+  };
+}
+
+async function getMerchantNightSalesSummary(merchantIdentifier) {
+  if (!merchantIdentifier) return null;
+  const target = String(merchantIdentifier).trim().toLowerCase();
+
+  const [lRows] = await pool.query(
+    `SELECT l.*, h.hotel_name, u.full_name as merchant_name, u.user_id as merchant_user_id, c.name as category_name
+     FROM listings l
+     JOIN hotels h ON l.hotel_id = h.hotel_id
+     JOIN users u ON h.merchant_user_id = u.user_id
+     LEFT JOIN categories c ON l.category_id = c.category_id
+     WHERE LOWER(u.full_name) LIKE ? OR LOWER(h.hotel_name) LIKE ? OR LOWER(u.user_id) = ? OR LOWER(h.hotel_id) = ?
+     ORDER BY l.created_at DESC`,
+    [`%${target}%`, `%${target}%`, target, target]
+  );
+
+  const listings = lRows.map(formatListingRow);
+  const nowMs = Date.now();
+
+  const activeOffers = listings.filter((l) => l.status === "active" && l.collectionDeadline > nowMs);
+  const soldOutOffers = listings.filter((l) => l.status === "soldout" || (l.quantityAvailable === 0 && l.status !== "cancelled"));
+  const expiredOffers = listings.filter((l) => l.status === "expired_donatable" || (l.status === "active" && l.collectionDeadline <= nowMs));
+  const pausedOffers = listings.filter((l) => l.status === "paused");
+
+  const [claimRows] = await pool.query(
+    `SELECT c.*, l.item_name, l.original_price, l.discount_price, l.is_night_sale, u.full_name as customer_name
+     FROM claims c
+     JOIN listings l ON c.listing_id = l.listing_id
+     JOIN hotels h ON l.hotel_id = h.hotel_id
+     JOIN users u_m ON h.merchant_user_id = u_m.user_id
+     LEFT JOIN users u ON c.customer_user_id = u.user_id
+     WHERE LOWER(u_m.full_name) LIKE ? OR LOWER(h.hotel_name) LIKE ? OR LOWER(u_m.user_id) = ? OR LOWER(h.hotel_id) = ?
+     ORDER BY c.claimed_at DESC`,
+    [`%${target}%`, `%${target}%`, target, target]
+  );
+
+  const completedClaims = claimRows.filter((c) =>
+    ["PICKED_UP", "COMPLETED", "DELIVERED", "COLLECTED", "TOKEN_VERIFIED"].includes(String(c.status).toUpperCase())
+  );
+
+  const totalSoldQuantity = claimRows
+    .filter((c) => String(c.status).toUpperCase() !== "CANCELLED")
+    .reduce((sum, c) => sum + Number(c.quantity || 0), 0);
+
+  const totalRevenue = completedClaims.reduce((sum, c) => sum + Number(c.price_paid || 0), 0);
+
+  return {
+    merchantIdentifier,
+    metrics: {
+      totalNightOffers: listings.length,
+      activeCount: activeOffers.length,
+      soldOutCount: soldOutOffers.length,
+      expiredCount: expiredOffers.length,
+      pausedCount: pausedOffers.length,
+      totalOrders: claimRows.length,
+      completedOrdersCount: completedClaims.length,
+      totalQuantitySold: totalSoldQuantity,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+    },
+    activeOffers,
+    soldOutOffers,
+    expiredOffers,
+    pausedOffers,
+    recentOrders: claimRows.slice(0, 10).map((c) => ({
+      id: c.claim_id,
+      token: c.claim_token,
+      itemName: c.item_name,
+      quantity: Number(c.quantity || 1),
+      pricePaid: Number(c.price_paid || 0),
+      status: c.status,
+      customerName: c.customer_name || "Customer",
+      claimedAt: new Date(c.claimed_at).getTime(),
+    })),
+  };
+}
+
+async function pauseListing(id, merchantIdentifier = "") {
+  return updateListing(id, { status: "paused" }, merchantIdentifier);
+}
+
+async function resumeListing(id, merchantIdentifier = "") {
+  return updateListing(id, { status: "active" }, merchantIdentifier);
+}
+
+async function markListingSoldOut(id, merchantIdentifier = "") {
+  return updateListing(id, { status: "soldout", quantityAvailable: 0 }, merchantIdentifier);
+}
+
+async function removeUnsafeListing(id, merchantIdentifier = "", reason = "Removed for food safety precaution") {
+  const listing = await getListing(id);
+  if (!listing) return { error: "not_found" };
+
+  await pool.query(
+    `UPDATE fact_listings SET status = 'cancelled', quantity_available = 0 WHERE listing_id = ?`,
+    [id]
+  );
+
+  const updated = await getListing(id);
+  return { ok: true, listing: updated, message: `Listing removed immediately: ${reason}` };
+}
+
+async function donateListingToNgo(listingId, merchantIdentifier = "") {
+  const listing = await getListing(listingId);
+  if (!listing) return { error: "not_found", message: "Listing not found" };
+
+  const qty = listing.quantityAvailable > 0 ? listing.quantityAvailable : listing.quantityTotal;
+  const donationId = generateId("don");
+  const deadline = new Date(Date.now() + 2 * 60 * 60 * 1000);
+
+  await pool.query(
+    `INSERT INTO fact_donations (donation_id, merchant_user_id, hotel_id, listing_id, item_name, quantity, description, address, latitude, longitude, pickup_deadline, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DONATION_CREATED')`,
+    [
+      donationId,
+      listing.merchantId,
+      listing.hotelId,
+      listing.id,
+      listing.itemName,
+      qty,
+      `Night-sale surplus food rescue donation from ${listing.merchantName}. Safe and hygienically handled.`,
+      listing.address,
+      listing.lat || 9.1724,
+      listing.lng || 77.8694,
+      deadline,
+    ]
+  );
+
+  await pool.query(
+    `UPDATE fact_listings SET status = 'rescued', quantity_available = 0, notified_ngo = TRUE WHERE listing_id = ?`,
+    [listingId]
+  );
+
+  const updatedListing = await getListing(listingId);
+  return {
+    ok: true,
+    donationId,
+    listing: updatedListing,
+    message: `Surplus food redirected to NGO donation successfully (#${donationId})`,
+  };
+}
+
+module.exports = {
   getAppSettings,
   updateAppSetting,
   SINGLE_ADMIN,
-  NGO_PARTNERS,
   createAdminNotification,
   getAdminNotifications,
   markAdminNotificationRead,
@@ -3005,4 +3637,11 @@ module.exports = {
   cancelOrder,
   updateOrderTrackingLocation,
   getOrderTrackingState,
+  getNightSaleListings,
+  getMerchantNightSalesSummary,
+  pauseListing,
+  resumeListing,
+  markListingSoldOut,
+  removeUnsafeListing,
+  donateListingToNgo,
 };

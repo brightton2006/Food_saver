@@ -108,10 +108,19 @@ async function getNearbyFood(req, res) {
       sortBy = "distance",
     } = req.query;
 
-    const searchLat = Number(latitude || lat) || 9.1724;
-    const searchLng = Number(longitude || lng) || 77.8694;
+    const searchLat = Number(latitude || lat);
+    const searchLng = Number(longitude || lng);
+
+    if (isNaN(searchLat) || searchLat < -90 || searchLat > 90) {
+      return res.status(400).json({ success: false, error: "Valid latitude (-90 to 90) required." });
+    }
+    if (isNaN(searchLng) || searchLng < -180 || searchLng > 180) {
+      return res.status(400).json({ success: false, error: "Valid longitude (-180 to 180) required." });
+    }
+
     let searchRadius = Number(radius) || 2.0;
     if (searchRadius > 100) searchRadius = searchRadius / 1000;
+    if (searchRadius > 50) searchRadius = 50.0;
 
     const items = await locationService.getNearbyListings({
       lat: searchLat,
@@ -229,51 +238,132 @@ async function geocode(req, res) {
  * GET /api/merchants/:id
  * Retrieve real restaurant location and details by ID
  */
-async function getMerchantById(req, res) {
+/**
+ * GET /api/locations/nearby & /api/location/nearby
+ * Real-world nearby restaurant and FoodSaver partner discovery
+ * Parameters: lat, lng, radius (1, 2, 5, 10, 25 km), category, searchQuery, sortBy, hasSurplusOnly
+ */
+async function getNearbyLocations(req, res) {
   try {
-    const { id } = req.params;
-    const { pool } = require("../config/db");
+    const {
+      lat,
+      lng,
+      latitude,
+      longitude,
+      radius = 5.0,
+      category = "All",
+      searchQuery,
+      query,
+      q,
+      sortBy = "distance",
+      hasSurplusOnly = false,
+      includeExternal = true,
+    } = req.query;
 
-    const [rows] = await pool.query(
-      `SELECT h.*, u.full_name as merchant_name, u.email,
-              COALESCE((
-                SELECT COUNT(*) FROM listings l
-                WHERE l.hotel_id = h.hotel_id AND l.status = 'active'
-                  AND l.expires_at > NOW() AND l.quantity_available > 0
-              ), 0) AS available_food_count
-       FROM hotels h
-       JOIN users u ON h.merchant_user_id = u.user_id
-       WHERE h.hotel_id = ? OR h.merchant_user_id = ? LIMIT 1`,
-      [id, id]
-    );
+    const sLat = Number(lat || latitude);
+    const sLng = Number(lng || longitude);
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, error: "Restaurant not found" });
+    if (isNaN(sLat) || sLat < -90 || sLat > 90) {
+      return res.status(400).json({ success: false, error: "Invalid latitude (-90 to 90 required)" });
+    }
+    if (isNaN(sLng) || sLng < -180 || sLng > 180) {
+      return res.status(400).json({ success: false, error: "Invalid longitude (-180 to 180 required)" });
     }
 
-    const r = rows[0];
-    const merchant = {
-      id: r.hotel_id,
-      merchantId: r.merchant_user_id || r.hotel_id,
-      hotelId: r.hotel_id,
-      businessName: r.hotel_name,
-      hotelName: r.hotel_name,
-      address: r.address,
-      city: r.location_city || "Kovilpatti",
-      latitude: Number(r.latitude),
-      longitude: Number(r.longitude),
-      lat: Number(r.latitude),
-      lng: Number(r.longitude),
-      cuisine: r.cuisine || "Restaurant",
-      contactNumber: r.contact_number,
-      rating: Number(r.rating || 4.5),
-      availableFoodCount: Number(r.available_food_count || 0),
-      isVerified: r.verification_status === "approved",
-    };
+    let searchRadius = Number(radius) || 5.0;
+    if (searchRadius > 100) searchRadius = searchRadius / 1000;
+    if (searchRadius > 50) searchRadius = 50.0;
+    if (searchRadius < 0.1) searchRadius = 0.5;
 
-    return res.json({ success: true, merchant });
+    const discovery = await locationService.getNearbyDiscovery({
+      lat: sLat,
+      lng: sLng,
+      radiusKm: searchRadius,
+      category: String(category),
+      searchQuery: searchQuery || query || q || "",
+      sortBy: String(sortBy),
+      hasSurplusOnly: hasSurplusOnly === "true" || hasSurplusOnly === true,
+      includeExternal: includeExternal !== "false" && includeExternal !== false,
+    });
+
+    return res.json({
+      success: true,
+      center: discovery.center,
+      radius: searchRadius,
+      radiusKm: searchRadius,
+      count: discovery.totalCount,
+      totalCount: discovery.totalCount,
+      verifiedPartnersCount: discovery.verifiedPartnersCount,
+      discoveredPlacesCount: discovery.discoveredPlacesCount,
+      businesses: discovery.businesses,
+      merchants: discovery.merchants,
+      externalPlaces: discovery.externalPlaces,
+      items: discovery.businesses,
+    });
   } catch (err) {
-    console.error("Error in getMerchantById:", err);
+    console.error("Error in getNearbyLocations:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+/**
+ * GET /api/locations/search & /api/location/search
+ * Search across FoodSaver merchants, dishes, and geocoded locations (districts, towns, PIN codes, streets)
+ */
+async function searchLocations(req, res) {
+  try {
+    const { q, query, searchQuery, lat, lng, latitude, longitude, radius = 25.0 } = req.query;
+    const searchTerm = String(q || query || searchQuery || "").trim();
+
+    if (!searchTerm || searchTerm.length < 1) {
+      return res.json({ success: true, query: "", count: 0, results: [] });
+    }
+
+    const sLat = lat || latitude ? Number(lat || latitude) : null;
+    const sLng = lng || longitude ? Number(lng || longitude) : null;
+
+    const results = await locationService.searchLocationsAndPlaces({
+      query: searchTerm,
+      lat: sLat,
+      lng: sLng,
+      radiusKm: Number(radius) || 25.0,
+    });
+
+    return res.json({
+      success: true,
+      query: searchTerm,
+      count: results.length,
+      results,
+    });
+  } catch (err) {
+    console.error("Error in searchLocations:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+/**
+ * GET /api/locations/business/:id & /api/merchants/:id
+ * Retrieve real restaurant location and details by ID (handles FoodSaver merchants and external places)
+ */
+async function getBusinessById(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, error: "Business ID is required" });
+    }
+
+    const business = await locationService.getBusinessDetails(id);
+    if (!business) {
+      return res.status(404).json({ success: false, error: "Business not found" });
+    }
+
+    return res.json({
+      success: true,
+      business,
+      merchant: business, // for backward compatibility
+    });
+  } catch (err) {
+    console.error("Error in getBusinessById:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 }
@@ -312,9 +402,11 @@ async function searchMerchants(req, res) {
 
 module.exports = {
   getRoute,
+  getNearbyLocations,
+  searchLocations,
+  getBusinessById,
   getNearbyMerchants,
   getNearbyFood,
-  getMerchantById,
   searchMerchants,
   updateUserLocation,
   updateMerchantLocation,

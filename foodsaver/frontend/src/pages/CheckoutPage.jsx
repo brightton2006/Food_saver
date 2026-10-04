@@ -32,15 +32,22 @@ export default function CheckoutPage() {
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  const deliveryFee = 30;
-  const discount = 50;
-  const calculatedSubtotal = items.reduce((sum, item) => {
-    const price = Number(item.listing.discountPrice || item.listing.originalPrice || 100);
-    return sum + price * item.quantity;
-  }, 0) || subtotal || 500;
+  const deliveryFee = items && items.length > 0 ? 30 : 0;
+  
+  // Calculate genuine original total and discounted subtotal from DB fields
+  const originalSubtotal = (items || []).reduce((sum, item) => {
+    const orig = Number(item.listing?.originalPrice || item.listing?.original_price || item.listing?.discountPrice || 0);
+    return sum + orig * item.quantity;
+  }, 0);
 
-  const grandTotal = Math.max(0, calculatedSubtotal + deliveryFee - discount);
-  const savingsPct = Math.round((discount / (calculatedSubtotal + deliveryFee)) * 100);
+  const calculatedSubtotal = (items || []).reduce((sum, item) => {
+    const price = Number(item.listing?.discountPrice || item.listing?.discountedPrice || item.listing?.originalPrice || 0);
+    return sum + price * item.quantity;
+  }, 0);
+
+  const discount = Math.max(0, originalSubtotal - calculatedSubtotal);
+  const grandTotal = items && items.length > 0 ? Math.max(0, calculatedSubtotal + deliveryFee) : 0;
+  const savingsPct = originalSubtotal > 0 ? Math.round((discount / originalSubtotal) * 100) : 0;
 
   const [paymentStatus, setPaymentStatus] = useState("PROCESSING"); // "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "PENDING"
   const [errorMessage, setErrorMessage] = useState("");
@@ -85,6 +92,37 @@ export default function CheckoutPage() {
       setErrorMessage(err.message || "Payment authorization failed. Please check payment credentials.");
       setPaymentStatus("FAILED");
     }
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0b0f19", color: "#ffffff", padding: "60px 16px" }}>
+        <div style={{ maxWidth: 540, margin: "0 auto", textAlign: "center", background: "#2D3B37", borderRadius: 20, padding: "40px 24px", border: "1px solid rgba(255,255,255,0.1)" }}>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🛒</div>
+          <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 10, color: "#ffffff" }}>Your Cart is Empty</h2>
+          <p style={{ color: "#cbd5e1", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
+            You do not have any surplus food items in your order. Explore verified local partner kitchens and rescue delicious meals today!
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/listings")}
+            style={{
+              padding: "14px 28px",
+              fontSize: 14,
+              fontWeight: 800,
+              borderRadius: 12,
+              border: "none",
+              background: "#FF9F68",
+              color: "#24332F",
+              cursor: "pointer",
+              boxShadow: "0 4px 14px rgba(255,159,104,0.4)"
+            }}
+          >
+            Browse Verified Hotels & Menus →
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

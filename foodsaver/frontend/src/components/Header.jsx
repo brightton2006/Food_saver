@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useSession } from "../lib/session.jsx";
 import { useCart } from "../lib/cart.jsx";
 import { useTranslation } from "../lib/i18n.jsx";
+import { useTheme } from "../lib/theme.jsx";
 import { socket } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import NotificationBell from "./NotificationBell.jsx";
-import { Globe } from "lucide-react";
+import { Globe, Palette } from "lucide-react";
 
 const CITIES = ["Kovilpatti", "Chennai", "Madurai", "Coimbatore", "Bangalore", "Trichy"];
 
@@ -168,6 +169,9 @@ export default function Header({
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [showLangDropdown, setShowLangDropdown] = useState(false);
 
+  const { themeKey, applyTheme, palettes } = useTheme();
+  const [showThemeDropdown, setShowThemeDropdown] = useState(false);
+
   return (
     <header className="marketplace-header">
       <div className="header-inner">
@@ -185,8 +189,8 @@ export default function Header({
               style={{ width: 42, height: 42, objectFit: "contain", borderRadius: 10 }}
             />
             <div className="brand-copy">
-              <strong style={{ fontSize: 18, color: "#145C52", fontWeight: 800, letterSpacing: "-0.2px" }}>FoodSaver</strong>
-              <span style={{ fontSize: 11, color: "#687674", fontWeight: 600 }}>Good Food • Less Waste</span>
+              <strong style={{ fontSize: 18, color: "var(--color-primary, #145C52)", fontWeight: 800, letterSpacing: "-0.2px" }}>FoodSaver</strong>
+              <span style={{ fontSize: 11, color: "var(--fs-text-secondary, #687674)", fontWeight: 600 }}>Good Food • Less Waste</span>
             </div>
           </div>
         </div>
@@ -199,7 +203,7 @@ export default function Header({
             onClick={() => setShowCityDropdown((prev) => !prev)}
             title="Change Location"
           >
-            <svg className="location-pin-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16796B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <svg className="location-pin-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
             <span className="location-city-name">{city}</span>
             <svg className="dropdown-caret-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 
@@ -239,19 +243,142 @@ export default function Header({
           </div>
         </div>
 
-        {/* Right: Offers, My Orders, Nearby Map, Language, Auth & Cart Actions */}
+        {/* Right: Offers, My Orders, Nearby Map, Language, Theme, Auth & Cart Actions */}
         <div className="header-right">
-          {/* Language Switcher */}
+          {/* Dynamic Theme Quick Switcher */}
           <div style={{ position: "relative" }}>
             <button
               type="button"
               className="header-nav-link-item"
-              onClick={() => setShowLangDropdown((prev) => !prev)}
-              title="Change Language"
-              style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 10, background: "rgba(20, 92, 82, 0.08)" }}
+              onClick={() => {
+                setShowThemeDropdown((prev) => !prev);
+                setShowLangDropdown(false);
+              }}
+              title="Custom Color Theme"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 10px",
+                borderRadius: 10,
+                background: "var(--color-primary-light, #E8F4F1)",
+                color: "var(--color-primary, #145C52)",
+                border: "1px solid var(--fs-border, #DCE6E3)",
+              }}
             >
-              <Globe className="w-3.5 h-3.5 text-[#145C52]" />
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#145C52" }}>{language === "ta" ? "தமிழ்" : "EN"}</span>
+              <Palette className="w-3.5 h-3.5" />
+              <span style={{ fontSize: 11, fontWeight: 700 }}>Theme</span>
+            </button>
+
+            {showThemeDropdown && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 38,
+                  right: 0,
+                  background: "#FFFFFF",
+                  border: "1px solid var(--fs-border, #DCE6E3)",
+                  borderRadius: 14,
+                  padding: 10,
+                  minWidth: 200,
+                  boxShadow: "0 12px 30px rgba(0, 0, 0, 0.15)",
+                  zIndex: 100,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#687674", textTransform: "uppercase", marginBottom: 8, paddingLeft: 4 }}>
+                  Color Palettes
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {Object.values(palettes).map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => {
+                        applyTheme(p.key);
+                        setShowThemeDropdown(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: themeKey === p.key ? "var(--color-primary-light, #E8F4F1)" : "transparent",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontSize: 12,
+                        fontWeight: themeKey === p.key ? 800 : 500,
+                        color: themeKey === p.key ? "var(--color-primary, #145C52)" : "#102A2A",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          backgroundColor: p.primary,
+                          display: "inline-block",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
+                          border: "1px solid rgba(255,255,255,0.8)",
+                        }}
+                      />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ borderTop: "1px solid #E2E8F0", marginTop: 8, paddingTop: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowThemeDropdown(false);
+                      navigate("/profile");
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "none",
+                      color: "var(--color-primary, #145C52)",
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textAlign: "center",
+                    }}
+                  >
+                    ⚙️ Customize in Settings →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Multilingual Switcher (English, Tamil, Hindi) */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="header-nav-link-item"
+              onClick={() => {
+                setShowLangDropdown((prev) => !prev);
+                setShowThemeDropdown(false);
+              }}
+              title="Change Language"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 10px",
+                borderRadius: 10,
+                background: "var(--color-primary-light, #E8F4F1)",
+                border: "1px solid var(--fs-border, #DCE6E3)",
+              }}
+            >
+              <Globe className="w-3.5 h-3.5 text-[var(--color-primary,#145C52)]" />
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-primary, #145C52)" }}>
+                {language === "ta" ? "தமிழ்" : language === "hi" ? "हिंदी" : "EN"}
+              </span>
             </button>
             {showLangDropdown && (
               <div
@@ -260,10 +387,10 @@ export default function Header({
                   top: 38,
                   right: 0,
                   background: "#FFFFFF",
-                  border: "1px solid #DCE6E3",
+                  border: "1px solid var(--fs-border, #DCE6E3)",
                   borderRadius: 12,
                   padding: 4,
-                  minWidth: 110,
+                  minWidth: 130,
                   boxShadow: "0 10px 25px rgba(20, 92, 82, 0.12)",
                   zIndex: 100,
                 }}
@@ -277,11 +404,11 @@ export default function Header({
                   style={{
                     width: "100%",
                     textAlign: "left",
-                    padding: "6px 12px",
+                    padding: "7px 12px",
                     fontSize: 12,
-                    color: language === "en" ? "#145C52" : "#102A2A",
+                    color: language === "en" ? "var(--color-primary, #145C52)" : "#102A2A",
                     fontWeight: language === "en" ? 800 : 500,
-                    background: language === "en" ? "#E8F4F1" : "transparent",
+                    background: language === "en" ? "var(--color-primary-light, #E8F4F1)" : "transparent",
                     border: "none",
                     borderRadius: 8,
                     cursor: "pointer",
@@ -298,17 +425,38 @@ export default function Header({
                   style={{
                     width: "100%",
                     textAlign: "left",
-                    padding: "6px 12px",
+                    padding: "7px 12px",
                     fontSize: 12,
-                    color: language === "ta" ? "#145C52" : "#102A2A",
+                    color: language === "ta" ? "var(--color-primary, #145C52)" : "#102A2A",
                     fontWeight: language === "ta" ? 800 : 500,
-                    background: language === "ta" ? "#E8F4F1" : "transparent",
+                    background: language === "ta" ? "var(--color-primary-light, #E8F4F1)" : "transparent",
                     border: "none",
                     borderRadius: 8,
                     cursor: "pointer",
                   }}
                 >
-                  🇮🇳 தமிழ்
+                  🇮🇳 தமிழ் (Tamil)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLanguage("hi");
+                    setShowLangDropdown(false);
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "7px 12px",
+                    fontSize: 12,
+                    color: language === "hi" ? "var(--color-primary, #145C52)" : "#102A2A",
+                    fontWeight: language === "hi" ? 800 : 500,
+                    background: language === "hi" ? "var(--color-primary-light, #E8F4F1)" : "transparent",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  🇮🇳 हिंदी (Hindi)
                 </button>
               </div>
             )}
@@ -394,7 +542,8 @@ export default function Header({
           <button
             type="button"
             className="header-nav-link-item"
-            onClick={() => alert("Food Saver Support: Help center active at support@foodsaver.com")}
+            onClick={() => window.open("mailto:support@foodsaver.com?subject=FoodSaver%20Support%20Request", "_blank")}
+            title="Contact FoodSaver Support Team"
           >
             ❓ Help
           </button>

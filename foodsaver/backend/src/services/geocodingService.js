@@ -260,9 +260,86 @@ async function ensureMerchantGeocoded(merchantIdOrHotelId) {
   };
 }
 
+/**
+ * Search geocoded location suggestions for autocomplete (districts of Tamil Nadu, towns, PIN codes, streets)
+ */
+async function searchGeocodedLocations(rawQuery = "") {
+  const q = String(rawQuery || "").trim();
+  if (!q || q.length < 2) return [];
+
+  const results = [];
+  const seenNames = new Set();
+
+  // 1. Check known cities/towns first for instant matching
+  const lowerQ = q.toLowerCase();
+  for (const [key, cityInfo] of Object.entries(KNOWN_CITIES)) {
+    if (key.includes(lowerQ) || cityInfo.city.toLowerCase().includes(lowerQ)) {
+      const displayName = `${cityInfo.city}, ${cityInfo.state}`;
+      if (!seenNames.has(displayName)) {
+        seenNames.add(displayName);
+        results.push({
+          displayName,
+          city: cityInfo.city,
+          state: cityInfo.state,
+          latitude: cityInfo.latitude,
+          longitude: cityInfo.longitude,
+          type: "city",
+        });
+      }
+    }
+  }
+
+  // 2. Query Nominatim search API for real geocoding
+  try {
+    const isPincode = /^\d{6}$/.test(q);
+    const searchParam = isPincode ? `${q}, Tamil Nadu` : `${q}, India`;
+    const osmUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      searchParam
+    )}&limit=6&addressdetails=1`;
+
+    const osmRes = await fetch(osmUrl, {
+      headers: { "User-Agent": "FoodSaver-Geocoding/1.0" },
+      signal: AbortSignal.timeout(3500),
+    });
+
+    if (osmRes.ok) {
+      const list = await osmRes.json();
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          const name = item.display_name;
+          const lat = Number(Number(item.lat).toFixed(6));
+          const lng = Number(Number(item.lon).toFixed(6));
+          const city = item.address?.city || item.address?.town || item.address?.village || item.address?.county || "";
+          const state = item.address?.state || "";
+
+          // Short clean title
+          const shortName = item.display_name.split(",").slice(0, 3).join(", ").trim();
+          if (!seenNames.has(shortName) && !isNaN(lat) && !isNaN(lng)) {
+            seenNames.add(shortName);
+            results.push({
+              displayName: shortName,
+              fullAddress: item.display_name,
+              city,
+              state,
+              latitude: lat,
+              longitude: lng,
+              type: item.type || "location",
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Continue
+  }
+
+  return results.slice(0, 8);
+}
+
 module.exports = {
   geocodeAddress,
   ensureMerchantGeocoded,
   cleanAddress,
   KNOWN_CITIES,
+  searchGeocodedLocations,
 };

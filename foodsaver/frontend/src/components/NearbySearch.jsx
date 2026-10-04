@@ -1,67 +1,115 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { searchLocationsBackend } from "../services/locationService.js";
 
-const FOOD_TAGS = [
-  "All",
-  "Biryani",
-  "Dosa",
-  "Meals",
-  "Chicken",
-  "Bakery",
-  "Pizza",
-  "Snacks",
-  "Vegetarian",
-  "Non-Vegetarian",
+const CATEGORY_TAGS = [
+  { id: "All", label: "All Restaurants" },
+  { id: "Vegetarian", label: "Vegetarian" },
+  { id: "Non-Vegetarian", label: "Non-Vegetarian" },
+  { id: "Biryani", label: "Biryani" },
+  { id: "Bakery", label: "Bakery" },
+  { id: "Cafe", label: "Cafe" },
+  { id: "Meals", label: "Meals" },
 ];
 
 const RADIUS_OPTIONS = [
-  { value: 1.0, label: "1 KM" },
-  { value: 2.0, label: "2 KM", isDefault: true },
-  { value: 5.0, label: "5 KM" },
-  { value: 10.0, label: "10 KM" },
+  { value: 1.0, label: "1 km" },
+  { value: 2.0, label: "2 km" },
+  { value: 5.0, label: "5 km" },
+  { value: 10.0, label: "10 km" },
+  { value: 25.0, label: "25 km" },
 ];
 
 /**
  * NearbySearch
- * Google Maps-style top search bar for FoodSaver.
- * Combines food type, dish name, merchant name, and live proximity calculations.
- *
- * @param {Object} props
- * @param {string} props.searchQuery
- * @param {Function} props.onSearchChange
- * @param {number} props.radiusKm
- * @param {Function} props.onRadiusChange
- * @param {Array<Object>} props.merchants
- * @param {Array<Object>} props.foodItems
- * @param {Function} props.onSelectMerchant
- * @param {Function} props.onDirections
+ * Real-world location, hotel, and restaurant search bar.
+ * Autocompletes places in Tamil Nadu, PIN codes, streets, and approved FoodSaver partners.
  */
 export default function NearbySearch({
   searchQuery = "",
   onSearchChange,
   radiusKm = 2.0,
   onRadiusChange,
+  selectedCategory = "All",
+  onCategoryChange = null,
   merchants = [],
   foodItems = [],
   onSelectMerchant = null,
+  onSelectLocation = null,
+  onClearToCurrentLocation = null,
   onDirections = null,
+  userLocation = null,
 }) {
   const [isFocused, setIsFocused] = useState(false);
-  const [activeTag, setActiveTag] = useState("All");
+  const [backendResults, setBackendResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const containerRef = useRef(null);
 
-  // Filtered autocomplete matching results
-  const searchResults = useMemo(() => {
+  // Debounced backend search for places, towns, streets, districts, and merchants
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || q.length < 2) {
+      setBackendResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const uLat = userLocation?.latitude || null;
+        const uLng = userLocation?.longitude || null;
+        const results = await searchLocationsBackend(q, uLat, uLng, radiusKm);
+        setBackendResults(results);
+      } catch (err) {
+        console.warn("Backend search error:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, userLocation?.latitude, userLocation?.longitude, radiusKm]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsFocused(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleTagClick = (tagId) => {
+    if (onCategoryChange) {
+      onCategoryChange(tagId);
+    }
+    if (tagId === "All") {
+      onSearchChange("");
+    } else {
+      onSearchChange(tagId);
+    }
+  };
+
+  const handleClear = () => {
+    onSearchChange("");
+    if (onCategoryChange) onCategoryChange("All");
+    if (onClearToCurrentLocation) onClearToCurrentLocation();
+  };
+
+  // Combine matching local merchants with backend results
+  const combinedResults = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q && activeTag === "All") return [];
+    if (!q) return [];
 
-    const effectiveQuery = q || (activeTag !== "All" ? activeTag.toLowerCase() : "");
-
-    // 1. Matching merchants
-    const matchingMerchants = merchants
+    // Local matching merchants
+    const localMatches = merchants
       .filter((m) => {
         const name = (m.businessName || m.hotelName || "").toLowerCase();
-        const cuisine = (m.cuisine || "").toLowerCase();
-        const address = (m.address || "").toLowerCase();
-        return name.includes(effectiveQuery) || cuisine.includes(effectiveQuery) || address.includes(effectiveQuery);
+        const cuisine = (m.cuisine || m.category || "").toLowerCase();
+        const addr = (m.address || "").toLowerCase();
+        return name.includes(q) || cuisine.includes(q) || addr.includes(q);
       })
       .map((m) => ({
         type: "merchant",
@@ -69,56 +117,32 @@ export default function NearbySearch({
         title: m.businessName || m.hotelName,
         subtitle: `${m.cuisine || "Restaurant"} • ${m.address || "Kovilpatti"}`,
         distanceText: m.distanceText || (m.distance ? `${m.distance} km` : "Nearby"),
-        estimatedMinutes: m.estimatedMinutes || (m.distance ? Math.max(2, Math.round(m.distance * 2.5)) : 5),
-        availableFoodCount: m.availableFoodCount || 0,
+        lat: Number(m.latitude || m.lat),
+        lng: Number(m.longitude || m.lng),
         raw: m,
       }));
 
-    // 2. Matching food items
-    const matchingFoods = foodItems
-      .filter((f) => {
-        const fName = (f.itemName || f.foodName || "").toLowerCase();
-        const desc = (f.description || "").toLowerCase();
-        const cat = (f.category || "").toLowerCase();
-        const mName = (f.hotelName || f.merchantName || "").toLowerCase();
-        return (
-          fName.includes(effectiveQuery) ||
-          desc.includes(effectiveQuery) ||
-          cat.includes(effectiveQuery) ||
-          mName.includes(effectiveQuery)
-        );
-      })
-      .slice(0, 6)
-      .map((f) => ({
-        type: "food",
-        id: f.id,
-        title: f.itemName || f.foodName,
-        subtitle: `${f.hotelName || f.merchantName} • ₹${f.price || f.discountPrice}`,
-        distanceText: f.distanceText || (f.distance ? `${f.distance} km` : "Nearby"),
-        estimatedMinutes: f.estimatedMinutes || (f.distance ? Math.max(2, Math.round(f.distance * 2.5)) : 5),
-        raw: f,
-      }));
+    // Deduplicate backend results against local merchants
+    const localIds = new Set(localMatches.map((m) => String(m.id)));
+    const filteredBackend = backendResults.filter(
+      (b) => !localIds.has(String(b.id))
+    );
 
-    return [...matchingMerchants, ...matchingFoods].slice(0, 8);
-  }, [searchQuery, activeTag, merchants, foodItems]);
-
-  const handleTagClick = (tag) => {
-    setActiveTag(tag);
-    if (tag === "All") {
-      onSearchChange("");
-    } else {
-      onSearchChange(tag);
-    }
-  };
-
-  const clearSearch = () => {
-    onSearchChange("");
-    setActiveTag("All");
-  };
+    return [...localMatches, ...filteredBackend].slice(0, 10);
+  }, [searchQuery, merchants, backendResults]);
 
   return (
-    <div className="nearby-search-component" style={{ position: "relative", zIndex: 1100, width: "100%", fontFamily: "'Poppins', 'Inter', system-ui, -apple-system, sans-serif" }}>
-      {/* Top Search Bar & Radius Controls */}
+    <div
+      ref={containerRef}
+      className="nearby-search-component"
+      style={{
+        position: "relative",
+        zIndex: 1100,
+        width: "100%",
+        fontFamily: "'Poppins', 'Inter', system-ui, -apple-system, sans-serif",
+      }}
+    >
+      {/* Search Input Bar */}
       <div
         style={{
           background: "#FFFFFF",
@@ -131,34 +155,37 @@ export default function NearbySearch({
           gap: "8px",
         }}
       >
-        {/* Input Row */}
+        {/* Row 1: Search Input + Radius Selectors */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "16px", color: "#16796B" }}>🔍</span>
 
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => {
-              onSearchChange(e.target.value);
-              if (activeTag !== "All") setActiveTag("All");
-            }}
+            onChange={(e) => onSearchChange(e.target.value)}
             onFocus={() => setIsFocused(true)}
-            placeholder="Search restaurants, food or places..."
+            placeholder="Search hotel name, street, area, city, or PIN code..."
             style={{
               flex: 1,
               background: "transparent",
               border: "none",
               outline: "none",
               color: "#102A2A",
-              fontSize: "14px",
+              fontSize: "13px",
               fontWeight: 600,
             }}
           />
 
+          {isSearching && (
+            <span style={{ fontSize: "11px", color: "#16796B", fontWeight: 700 }}>
+              Searching...
+            </span>
+          )}
+
           {searchQuery && (
             <button
               type="button"
-              onClick={clearSearch}
+              onClick={handleClear}
               style={{
                 background: "#F3F9F7",
                 border: "1px solid #DCE6E3",
@@ -172,14 +199,22 @@ export default function NearbySearch({
                 fontSize: "12px",
                 cursor: "pointer",
               }}
-              title="Clear search"
+              title="Clear search and return to current location"
             >
               ✕
             </button>
           )}
 
-          {/* Radius Selector Pills */}
-          <div style={{ display: "flex", alignItems: "center", gap: "4px", paddingLeft: "6px", borderLeft: "1px solid #DCE6E3" }}>
+          {/* Radius Selector Pills (1, 2, 5, 10, 25 km) */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              paddingLeft: "6px",
+              borderLeft: "1px solid #DCE6E3",
+            }}
+          >
             {RADIUS_OPTIONS.map((opt) => {
               const active = Number(radiusKm) === Number(opt.value);
               return (
@@ -198,6 +233,7 @@ export default function NearbySearch({
                     cursor: "pointer",
                     transition: "all 0.15s ease",
                   }}
+                  title={`Set discovery radius to ${opt.label}`}
                 >
                   {opt.label}
                 </button>
@@ -206,7 +242,7 @@ export default function NearbySearch({
           </div>
         </div>
 
-        {/* Quick Food Tag Chips Scrollable Row */}
+        {/* Row 2: Category Chips (Vegetarian, Non-Vegetarian, Biryani, Bakery, Cafe, Meals, All) */}
         <div
           style={{
             display: "flex",
@@ -218,13 +254,15 @@ export default function NearbySearch({
             paddingTop: "2px",
           }}
         >
-          {FOOD_TAGS.map((tag) => {
-            const active = activeTag.toLowerCase() === tag.toLowerCase() || searchQuery.toLowerCase() === tag.toLowerCase();
+          {CATEGORY_TAGS.map((tag) => {
+            const active =
+              selectedCategory.toLowerCase() === tag.id.toLowerCase() ||
+              searchQuery.toLowerCase() === tag.label.toLowerCase();
             return (
               <button
-                key={tag}
+                key={tag.id}
                 type="button"
-                onClick={() => handleTagClick(tag)}
+                onClick={() => handleTagClick(tag.id)}
                 style={{
                   background: active ? "#E8F4F1" : "#FFFFFF",
                   color: active ? "#145C52" : "#687674",
@@ -238,15 +276,15 @@ export default function NearbySearch({
                   transition: "all 0.15s ease",
                 }}
               >
-                {tag}
+                {tag.label}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Autocomplete Dropdown Panel (when input is focused and has matching results) */}
-      {isFocused && searchResults.length > 0 && (
+      {/* Autocomplete Suggestions Dropdown */}
+      {isFocused && searchQuery.trim().length >= 2 && (
         <div
           style={{
             position: "absolute",
@@ -256,98 +294,161 @@ export default function NearbySearch({
             background: "#FFFFFF",
             borderRadius: "18px",
             border: "1px solid #DCE6E3",
-            boxShadow: "0 16px 36px rgba(20, 92, 82, 0.12)",
+            boxShadow: "0 16px 36px rgba(20, 92, 82, 0.15)",
             overflow: "hidden",
-            maxHeight: "320px",
+            maxHeight: "340px",
             overflowY: "auto",
             zIndex: 1200,
           }}
         >
-          <div style={{ padding: "8px 12px", borderBottom: "1px solid #DCE6E3", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#F7F9F8" }}>
+          <div
+            style={{
+              padding: "8px 14px",
+              borderBottom: "1px solid #DCE6E3",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              background: "#F7F9F8",
+            }}
+          >
             <span style={{ fontSize: "11px", color: "#145C52", fontWeight: 800 }}>
-              NEARBY SEARCH RESULTS ({searchResults.length})
+              SEARCH SUGGESTIONS ({combinedResults.length})
             </span>
             <button
               type="button"
               onClick={() => setIsFocused(false)}
-              style={{ background: "transparent", border: "none", color: "#687674", fontSize: "11px", cursor: "pointer", fontWeight: 700 }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#687674",
+                fontSize: "11px",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
             >
               Close ✕
             </button>
           </div>
 
-          {searchResults.map((item) => (
-            <div
-              key={`${item.type}-${item.id}`}
-              onClick={() => {
-                if (item.type === "merchant" && onSelectMerchant) {
-                  onSelectMerchant(item.raw);
-                } else if (item.type === "food" && onSelectMerchant) {
-                  const merch = merchants.find((m) => String(m.id || m.hotelId) === String(item.raw.hotelId || item.raw.merchantId));
-                  if (merch) onSelectMerchant(merch);
-                }
-                setIsFocused(false);
-              }}
-              style={{
-                padding: "10px 14px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                borderBottom: "1px solid #F3F9F7",
-                cursor: "pointer",
-                transition: "background 0.15s ease",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#E8F4F1")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "16px" }}>{item.type === "merchant" ? "🏪" : "🍱"}</span>
-                <div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#102A2A" }}>
-                    {item.title}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#687674" }}>
-                    {item.subtitle}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", textAlign: "right" }}>
-                <div>
-                  <div style={{ fontSize: "12px", fontWeight: 800, color: "#145C52" }}>
-                    {item.distanceText}
-                  </div>
-                  <div style={{ fontSize: "10px", color: "#687674" }}>
-                    ~{item.estimatedMinutes} min
-                  </div>
-                </div>
-
-                {onDirections && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const target = item.type === "merchant" ? item.raw : merchants.find((m) => String(m.id || m.hotelId) === String(item.raw.hotelId || item.raw.merchantId));
-                      if (target && onDirections) onDirections(target);
-                      setIsFocused(false);
-                    }}
-                    style={{
-                      background: "#E8F4F1",
-                      border: "1px solid #16796B",
-                      color: "#145C52",
-                      borderRadius: "8px",
-                      padding: "5px 10px",
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Route
-                  </button>
-                )}
-              </div>
+          {combinedResults.length === 0 ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "#687674", fontSize: "12px" }}>
+              <span style={{ fontSize: "20px", display: "block", marginBottom: "4px" }}>🔍</span>
+              No places or restaurants found for "{searchQuery}". Try a nearby town or area.
             </div>
-          ))}
+          ) : (
+            combinedResults.map((item) => {
+              const isLocation = item.type === "location";
+              const isMerchant = item.type === "merchant";
+              const icon = isLocation ? "📍" : item.raw?.isFoodSaverPartner !== false ? "🍱" : "🍽️";
+
+              return (
+                <div
+                  key={`${item.type}-${item.id}`}
+                  onClick={() => {
+                    if (isLocation && onSelectLocation) {
+                      onSelectLocation({
+                        latitude: item.lat,
+                        longitude: item.lng,
+                        address: item.subtitle || item.title,
+                        displayName: item.title,
+                      });
+                      onSearchChange(item.title);
+                    } else if (isMerchant && onSelectMerchant) {
+                      onSelectMerchant(item.raw);
+                    }
+                    setIsFocused(false);
+                  }}
+                  style={{
+                    padding: "10px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderBottom: "1px solid #F3F9F7",
+                    cursor: "pointer",
+                    transition: "background 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#E8F4F1")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: "16px" }}>{icon}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          color: "#102A2A",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#687674",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.subtitle}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "10px" }}>
+                    {item.distanceText && (
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#145C52", whiteSpace: "nowrap" }}>
+                        {item.distanceText}
+                      </span>
+                    )}
+
+                    {isLocation ? (
+                      <span
+                        style={{
+                          background: "#E8F4F1",
+                          color: "#145C52",
+                          fontSize: "10px",
+                          fontWeight: 800,
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Move Map
+                      </span>
+                    ) : (
+                      onDirections && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onDirections && item.raw) onDirections(item.raw);
+                            setIsFocused(false);
+                          }}
+                          style={{
+                            background: "#E8F4F1",
+                            border: "1px solid #16796B",
+                            color: "#145C52",
+                            borderRadius: "8px",
+                            padding: "4px 8px",
+                            fontSize: "10px",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Get Directions
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
     </div>

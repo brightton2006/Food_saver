@@ -408,8 +408,17 @@ CREATE TABLE IF NOT EXISTS fact_listings (
     image_url TEXT,
     pickup_window_start TIME NOT NULL,
     pickup_window_end TIME NOT NULL,
-    status ENUM('active', 'soldout', 'expired_donatable', 'rescued', 'cancelled') DEFAULT 'active' NOT NULL,
+    status ENUM('draft', 'active', 'paused', 'soldout', 'expired_donatable', 'rescued', 'cancelled') DEFAULT 'active' NOT NULL,
     notified_ngo BOOLEAN DEFAULT FALSE NOT NULL,
+    is_night_sale BOOLEAN DEFAULT FALSE NOT NULL,
+    sale_window_start TIME DEFAULT '18:00:00',
+    sale_window_end TIME DEFAULT '23:00:00',
+    collection_deadline TIMESTAMP NULL,
+    delivery_supported BOOLEAN DEFAULT FALSE NOT NULL,
+    safe_storage_info VARCHAR(255) DEFAULT 'Temperature-controlled counter',
+    food_prep_time VARCHAR(100) DEFAULT 'Fresh daily surplus',
+    food_safety_approved BOOLEAN DEFAULT TRUE NOT NULL,
+    eligible_for_ngo BOOLEAN DEFAULT TRUE NOT NULL,
     date_key INT,
     time_key INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -438,7 +447,7 @@ CREATE TABLE IF NOT EXISTS fact_claims (
     customer_user_key INT,
     claim_method ENUM('digital', 'ngo_rescue', 'in_store') DEFAULT 'digital' NOT NULL,
     quantity INT NOT NULL,
-    unit_price DECIMAL(10,2) NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     price_paid DECIMAL(10,2) NOT NULL,
     status ENUM('ORDER_PLACED', 'ORDER_CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'CUSTOMER_ON_THE_WAY', 'CUSTOMER_ARRIVED', 'PICKED_UP', 'COMPLETED', 'CANCELLED', 'pending', 'collected', 'rerouted_to_ngo') DEFAULT 'ORDER_PLACED' NOT NULL,
     date_key INT,
@@ -658,7 +667,14 @@ CREATE OR REPLACE VIEW hotels AS SELECT hotel_key, hotel_id, merchant_user_id, h
 CREATE OR REPLACE VIEW ngos AS SELECT ngo_key, ngo_id, ngo_user_id, ngo_name, address, latitude, longitude, contact_number, service_radius_km, verification_status, created_at, updated_at FROM dim_ngos;
 CREATE OR REPLACE VIEW categories AS SELECT category_key, category_id, name FROM dim_categories;
 CREATE OR REPLACE VIEW menu_items AS SELECT menu_item_key, menu_item_id, hotel_id, category_id, item_name, description, original_price, discount_price, is_veg, image_url, rating, created_at FROM dim_menu_items;
-CREATE OR REPLACE VIEW listings AS SELECT listing_fact_id, listing_id, hotel_id, hotel_key, menu_item_id, menu_item_key, item_name, description, category_id, category_key, is_veg, original_price, discount_price, quantity_total, quantity_available, address, latitude, longitude, image_url, pickup_window_start, pickup_window_end, status, notified_ngo, date_key, time_key, created_at, expires_at FROM fact_listings;
+CREATE OR REPLACE VIEW listings AS SELECT 
+    listing_fact_id, listing_id, hotel_id, hotel_key, menu_item_id, menu_item_key, item_name, description, 
+    category_id, category_key, is_veg, original_price, discount_price, quantity_total, quantity_available, 
+    address, latitude, longitude, image_url, pickup_window_start, pickup_window_end, status, notified_ngo, 
+    date_key, time_key, created_at, expires_at,
+    is_night_sale, sale_window_start, sale_window_end, collection_deadline, delivery_supported, 
+    safe_storage_info, food_prep_time, food_safety_approved, eligible_for_ngo 
+FROM fact_listings;
 CREATE OR REPLACE VIEW claims AS SELECT claim_fact_id, claim_id, claim_token, listing_id, listing_fact_id, customer_user_id, customer_user_key, claim_method, quantity, unit_price, price_paid, status, date_key, time_key, claimed_at, collected_at, rerouted_at FROM fact_claims;
 CREATE OR REPLACE VIEW order_status_history AS SELECT status_hist_fact_id, history_id, claim_id, claim_fact_id, status, note, date_key, created_at FROM fact_order_status_history;
 CREATE OR REPLACE VIEW order_locations AS SELECT order_loc_fact_id, id, claim_id, claim_fact_id, user_id, user_key, latitude, longitude, accuracy, date_key, time_key, recorded_at FROM fact_order_locations;

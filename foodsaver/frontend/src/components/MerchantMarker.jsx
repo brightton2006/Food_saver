@@ -30,24 +30,28 @@ export default function MerchantMarker({
     return null;
   }
 
+  const isPartner = merchant.isFoodSaverPartner !== false;
   const dealsCount = Number(merchant.availableFoodCount || merchant.dealsCount || 0);
-  const hasFood = dealsCount > 0;
-  const businessName = merchant.businessName || merchant.hotelName || "FoodSaver Partner";
+  const hasFood = isPartner && dealsCount > 0;
+  const businessName = merchant.businessName || merchant.hotelName || merchant.name || (isPartner ? "FoodSaver Partner" : "Discovered Restaurant");
   const distText = merchant.distanceText || (merchant.distance ? `${merchant.distance} km away` : "Nearby");
   const estMins = merchant.estimatedMinutes || (merchant.distance ? Math.max(2, Math.round(Number(merchant.distance) * 2.5)) : 5);
 
-  // Dynamic styling based on food availability & selection state
-  // Selected: Orange (#FF9F43), Nearby Food: Teal (#145C52 / #16796B), Partner: Deep Teal (#0F4C45)
+  // Dynamic styling:
+  // FoodSaver Partner: Teal (#145C52 / #16796B) or Orange if selected
+  // External Discovered Business: Indigo/Slate (#4338CA / #475569) or Amber if selected
   const bgColor = isSelected
     ? "#FF9F43"
-    : hasFood
-    ? "#145C52"
-    : "#0F4C45";
+    : isPartner
+    ? (hasFood ? "#145C52" : "#0F4C45")
+    : "#475569";
 
-  const borderColor = isSelected ? "#FFFFFF" : hasFood ? "#E8F4F1" : "rgba(255,255,255,0.7)";
-  const arrowColor = isSelected ? "#FF9F43" : hasFood ? "#145C52" : "#0F4C45";
+  const borderColor = isSelected ? "#FFFFFF" : isPartner ? (hasFood ? "#E8F4F1" : "rgba(255,255,255,0.7)") : "#CBD5E1";
+  const arrowColor = bgColor;
   const scale = isSelected ? 1.08 : 1.0;
-  const shadow = isSelected ? "0 8px 24px rgba(255, 159, 67, 0.45)" : "0 6px 18px rgba(20, 92, 82, 0.25)";
+  const shadow = isSelected ? "0 8px 24px rgba(255, 159, 67, 0.45)" : isPartner ? "0 6px 18px rgba(20, 92, 82, 0.25)" : "0 4px 12px rgba(71, 85, 105, 0.3)";
+
+  const pinIcon = isPartner ? (hasFood ? "🍱" : "🏪") : "🍽️";
 
   const merchantIcon = L.divIcon({
     className: `custom-merchant-pin-container ${isSelected ? "selected-pin" : ""}`,
@@ -68,7 +72,7 @@ export default function MerchantMarker({
           white-space: nowrap;
           font-family: 'Poppins', 'Inter', system-ui, -apple-system, sans-serif;
         ">
-          <span style="font-size: 13px;">${hasFood ? "🍱" : "🏪"}</span>
+          <span style="font-size: 13px;">${pinIcon}</span>
           <span style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px;">
             ${businessName}
           </span>
@@ -97,18 +101,33 @@ export default function MerchantMarker({
       }}
     >
       <Popup className="merchant-marker-popup">
-        <div style={{ minWidth: "220px", padding: "6px 4px", fontFamily: "'Poppins', 'Inter', system-ui, -apple-system, sans-serif" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-            <span style={{ fontSize: "20px" }}>🍱</span>
+        <div style={{ minWidth: "230px", padding: "6px 4px", fontFamily: "'Poppins', 'Inter', system-ui, -apple-system, sans-serif" }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "6px" }}>
+            <span style={{ fontSize: "20px", marginTop: "2px" }}>{pinIcon}</span>
             <div style={{ flex: 1 }}>
-              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#102A2A", lineHeight: 1.2 }}>
-                {businessName}
-              </h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 800, color: "#102A2A", lineHeight: 1.2 }}>
+                  {businessName}
+                </h3>
+              </div>
               <div style={{ fontSize: "11px", color: "#687674", marginTop: "2px" }}>
-                {merchant.cuisine || "Restaurant"} • <span style={{ color: "#F5C451" }}>⭐</span> {merchant.rating || 4.5}
+                {merchant.cuisine || merchant.category || "Restaurant"}
+                {merchant.rating ? <span> • <span style={{ color: "#F5C451" }}>⭐</span> {merchant.rating}</span> : ""}
               </div>
             </div>
           </div>
+
+          {/* Badge for Partner vs External */}
+          {isPartner ? (
+            <div style={{ margin: "2px 0 6px", fontSize: "10px", fontWeight: 800, color: "#145C52", background: "#E8F4F1", padding: "3px 8px", borderRadius: "6px", display: "inline-block" }}>
+              ✓ Approved FoodSaver Partner
+            </div>
+          ) : (
+            <div style={{ margin: "2px 0 6px", fontSize: "10px", fontWeight: 700, color: "#475569", background: "#F1F5F9", padding: "3px 8px", borderRadius: "6px", display: "inline-block" }}>
+              🌐 Discovered Place (Not a FoodSaver Partner)
+            </div>
+          )}
 
           <p style={{ margin: "4px 0 8px", fontSize: "11px", color: "#687674", lineHeight: "1.4" }}>
             {merchant.address || "Kovilpatti"}
@@ -130,27 +149,30 @@ export default function MerchantMarker({
             </div>
           )}
 
+          {/* Actions */}
           <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (onViewFood) onViewFood(merchant);
-              }}
-              style={{
-                flex: 1,
-                background: "#E8F4F1",
-                color: "#145C52",
-                border: "1px solid #16796B",
-                padding: "8px 10px",
-                borderRadius: "10px",
-                fontSize: "11px",
-                fontWeight: 800,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              View Food
-            </button>
+            {isPartner && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onViewFood) onViewFood(merchant);
+                }}
+                style={{
+                  flex: 1,
+                  background: "#E8F4F1",
+                  color: "#145C52",
+                  border: "1px solid #16796B",
+                  padding: "8px 10px",
+                  borderRadius: "10px",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                View Food
+              </button>
+            )}
 
             <button
               type="button"
@@ -176,8 +198,31 @@ export default function MerchantMarker({
               }}
             >
               <span>🧭</span>
-              <span>Directions</span>
+              <span>Get Directions</span>
             </button>
+
+            {merchant.googleMapsUrl && (
+              <a
+                href={merchant.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View on Google Maps"
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #DCE6E3",
+                  color: "#145C52",
+                  borderRadius: "10px",
+                  padding: "8px 10px",
+                  fontSize: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textDecoration: "none",
+                }}
+              >
+                🗺️
+              </a>
+            )}
           </div>
         </div>
       </Popup>

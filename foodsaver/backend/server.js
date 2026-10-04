@@ -21,6 +21,7 @@ const ordersRouter = require("./src/routes/orders.routes");
 const recentlyAccessedRouter = require("./src/routes/recentlyAccessed.routes");
 const intelligenceRouter = require("./src/routes/intelligence.routes");
 const chatRouter = require("./src/routes/chatRoutes");
+const hotelsRouter = require("./src/routes/hotels.routes");
 const setupOrderSockets = require("./src/sockets/orderSocket");
 const { startExpirySweeper } = require("./src/sockets/expirySweeper");
 
@@ -75,6 +76,7 @@ app.get("/api/test-db", async (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/merchant", merchantRouter);
+app.use("/api/hotels", hotelsRouter);
 app.use("/api/food-image", foodImageRouter);
 app.use("/api/food", locationRouter);
 app.use("/api/foods", locationRouter);

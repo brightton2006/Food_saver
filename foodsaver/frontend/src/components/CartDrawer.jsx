@@ -25,7 +25,6 @@ export default function CartDrawer() {
     setIsCartOpen(false);
     if (cartItems.length > 0) {
       navigate("/checkout", { state: { listing: cartItems[0].listing, cartItems } });
-      clearCart();
     }
   }
 

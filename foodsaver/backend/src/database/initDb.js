@@ -211,9 +211,42 @@ async function initializeDatabase() {
       `);
     }
 
-    // Re-create backward compatibility listings VIEW to include image_url
+    // Dynamic Schema Alteration check for Night-Time Flash Sale columns on fact_listings
+    const [nightCols] = await connection.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fact_listings' AND COLUMN_NAME = 'is_night_sale'"
+    );
+    if (nightCols.length === 0) {
+      console.log("🛠️ Migrating fact_listings schema to include Night-Time Flash Sale columns...");
+      await connection.query(`
+        ALTER TABLE fact_listings
+        ADD COLUMN is_night_sale BOOLEAN DEFAULT FALSE NOT NULL,
+        ADD COLUMN sale_window_start TIME DEFAULT '18:00:00',
+        ADD COLUMN sale_window_end TIME DEFAULT '23:00:00',
+        ADD COLUMN collection_deadline TIMESTAMP NULL,
+        ADD COLUMN delivery_supported BOOLEAN DEFAULT FALSE NOT NULL,
+        ADD COLUMN safe_storage_info VARCHAR(255) DEFAULT 'Temperature-controlled counter',
+        ADD COLUMN food_prep_time VARCHAR(100) DEFAULT 'Fresh daily surplus',
+        ADD COLUMN food_safety_approved BOOLEAN DEFAULT TRUE NOT NULL,
+        ADD COLUMN eligible_for_ngo BOOLEAN DEFAULT TRUE NOT NULL
+      `);
+    }
+
+    // Ensure status on fact_listings includes 'paused'
+    await connection.query(`
+      ALTER TABLE fact_listings
+      MODIFY COLUMN status ENUM('draft', 'active', 'paused', 'soldout', 'expired_donatable', 'rescued', 'cancelled') DEFAULT 'active' NOT NULL
+    `).catch(() => {});
+
+    // Re-create backward compatibility listings VIEW to include image_url and Night-Sale columns
     await connection.query(
-      `CREATE OR REPLACE VIEW listings AS SELECT listing_fact_id, listing_id, hotel_id, hotel_key, menu_item_id, menu_item_key, item_name, description, category_id, category_key, is_veg, original_price, discount_price, quantity_total, quantity_available, address, latitude, longitude, image_url, pickup_window_start, pickup_window_end, status, notified_ngo, date_key, time_key, created_at, expires_at FROM fact_listings`
+      `CREATE OR REPLACE VIEW listings AS SELECT 
+        listing_fact_id, listing_id, hotel_id, hotel_key, menu_item_id, menu_item_key, item_name, description, 
+        category_id, category_key, is_veg, original_price, discount_price, quantity_total, quantity_available, 
+        address, latitude, longitude, image_url, pickup_window_start, pickup_window_end, status, notified_ngo, 
+        date_key, time_key, created_at, expires_at,
+        is_night_sale, sale_window_start, sale_window_end, collection_deadline, delivery_supported, 
+        safe_storage_info, food_prep_time, food_safety_approved, eligible_for_ngo 
+       FROM fact_listings`
     );
 
     // Populate missing images on existing listings using curated food photos
@@ -237,6 +270,65 @@ async function initializeDatabase() {
     // Re-create backward compatibility claims VIEW to include verification & tracking fields
     await connection.query(
       `CREATE OR REPLACE VIEW claims AS SELECT claim_fact_id, claim_id, claim_token, listing_id, listing_fact_id, customer_user_id, customer_user_key, claim_method, quantity, unit_price, price_paid, status, verified_at, verified_by, verification_method, tracking_active, tracking_started_at, tracking_ended_at, last_latitude, last_longitude, last_location_updated_at, date_key, time_key, claimed_at, collected_at, rerouted_at FROM fact_claims`
+    );
+
+    // Dynamic Schema Alteration check for communication, multilingual & theme preferences on dim_users
+    const [uPrefCols] = await connection.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dim_users' AND COLUMN_NAME = 'preferred_language'"
+    );
+    if (uPrefCols.length === 0) {
+      console.log("🛠️ Migrating dim_users schema to include language, theme and notification preferences...");
+      await connection.query(`
+        ALTER TABLE dim_users
+        ADD COLUMN phone_verified BOOLEAN DEFAULT FALSE NOT NULL,
+        ADD COLUMN phone_verified_at TIMESTAMP NULL,
+        ADD COLUMN preferred_language VARCHAR(10) DEFAULT 'en' NOT NULL,
+        ADD COLUMN preferred_theme VARCHAR(50) DEFAULT 'forest_green' NOT NULL,
+        ADD COLUMN custom_theme_config JSON NULL,
+        ADD COLUMN notification_preferences JSON NULL
+      `);
+    }
+
+    // Dynamic Schema creation for communication_events table (idempotency, retry tracking, email/sms delivery logs)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS communication_events (
+        event_id VARCHAR(100) PRIMARY KEY,
+        event_type VARCHAR(50) NOT NULL,
+        reference_id VARCHAR(50) NULL,
+        recipient VARCHAR(255) NOT NULL,
+        channel ENUM('EMAIL', 'SMS', 'IN_APP') NOT NULL,
+        status ENUM('PENDING', 'SENT', 'FAILED', 'SKIPPED') DEFAULT 'PENDING' NOT NULL,
+        attempts INT DEFAULT 1 NOT NULL,
+        last_error TEXT NULL,
+        payload JSON NULL,
+        sent_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_comm_ref (reference_id),
+        INDEX idx_comm_status (status),
+        INDEX idx_comm_type (event_type)
+      )
+    `);
+
+    // Dynamic Schema creation for otp_verifications table (SMS OTP verification)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS otp_verifications (
+        id VARCHAR(50) PRIMARY KEY,
+        phone_number VARCHAR(30) NOT NULL,
+        user_id VARCHAR(50) NULL,
+        otp_hash VARCHAR(255) NOT NULL,
+        purpose VARCHAR(50) DEFAULT 'PHONE_VERIFICATION' NOT NULL,
+        attempts INT DEFAULT 0 NOT NULL,
+        max_attempts INT DEFAULT 3 NOT NULL,
+        is_verified BOOLEAN DEFAULT FALSE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_otp_phone (phone_number, is_verified, expires_at)
+      )
+    `);
+
+    // Re-create backward compatibility users VIEW to include new preference and verification columns
+    await connection.query(
+      `CREATE OR REPLACE VIEW users AS SELECT user_key, user_id, role_id, email, password_hash, full_name, phone_number, phone_verified, phone_verified_at, preferred_language, preferred_theme, custom_theme_config, notification_preferences, latitude, longitude, location_updated_at, is_active, status, approved_at, rejected_at, approved_by, rejected_by, created_at, updated_at FROM dim_users`
     );
 
     console.log("✅ Star Schema database DDL, Views & Live Tracking tables verified successfully");

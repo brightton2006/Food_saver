@@ -35,11 +35,14 @@ export default function RoutePanel({
   onClose,
   onViewFood = null,
 }) {
+  const [travelMode, setTravelMode] = React.useState("driving"); // "driving" | "walking"
+
   if (!merchant) return null;
 
+  const isPartner = merchant.isFoodSaverPartner !== false;
   const mLat = Number(merchant.latitude || merchant.lat);
   const mLng = Number(merchant.longitude || merchant.lng);
-  const businessName = merchant.businessName || merchant.hotelName || "Selected Merchant";
+  const businessName = merchant.businessName || merchant.hotelName || merchant.name || (isPartner ? "FoodSaver Partner" : "Discovered Restaurant");
   const dealsCount = merchant.availableFoodCount || 0;
 
   // Format display distance
@@ -49,7 +52,12 @@ export default function RoutePanel({
       : `${Number(distance).toFixed(1)} km`
     : merchant.distanceText || "Calculating...";
 
-  const timeDisplay = duration ? `${duration} min` : "Calculating...";
+  // Adjusted duration for walking if selected
+  const displayDuration = travelMode === "walking" && distance
+    ? `${Math.max(1, Math.round(Number(distance) * 12))} min`
+    : duration
+    ? `${duration} min`
+    : "Calculating...";
 
   return (
     <div
@@ -78,6 +86,42 @@ export default function RoutePanel({
           <span style={{ fontSize: "13px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", color: isNavigating ? "#16796B" : "#145C52" }}>
             {isNavigating ? "Live Navigation" : "Road Directions"}
           </span>
+        </div>
+
+        {/* Travel Mode Toggle (Driving / Walking) */}
+        <div style={{ display: "flex", background: "#F3F9F7", borderRadius: "10px", padding: "2px", border: "1px solid #DCE6E3" }}>
+          <button
+            type="button"
+            onClick={() => setTravelMode("driving")}
+            style={{
+              background: travelMode === "driving" ? "#145C52" : "transparent",
+              color: travelMode === "driving" ? "#ffffff" : "#687674",
+              border: "none",
+              borderRadius: "8px",
+              padding: "3px 8px",
+              fontSize: "11px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            🚗 Drive
+          </button>
+          <button
+            type="button"
+            onClick={() => setTravelMode("walking")}
+            style={{
+              background: travelMode === "walking" ? "#145C52" : "transparent",
+              color: travelMode === "walking" ? "#ffffff" : "#687674",
+              border: "none",
+              borderRadius: "8px",
+              padding: "3px 8px",
+              fontSize: "11px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            🚶 Walk
+          </button>
         </div>
 
         <button
@@ -203,7 +247,7 @@ export default function RoutePanel({
           </span>
           <span style={{ color: "#687674" }}>•</span>
           <span style={{ fontSize: "16px", fontWeight: 800, color: "#102A2A" }}>
-            {isLoadingRoute ? "..." : timeDisplay}
+            {isLoadingRoute ? "..." : displayDuration}
           </span>
         </div>
 
@@ -221,7 +265,7 @@ export default function RoutePanel({
             type="button"
             onClick={() => {
               onStartNavigation();
-              openDirections(mLat, mLng, userLocation?.latitude, userLocation?.longitude);
+              openDirections(mLat, mLng, userLocation?.latitude, userLocation?.longitude, travelMode);
             }}
             style={{
               flex: 1.2,
@@ -269,7 +313,7 @@ export default function RoutePanel({
           </button>
         )}
 
-        {onViewFood && dealsCount > 0 && (
+        {isPartner && onViewFood && dealsCount > 0 && (
           <button
             type="button"
             onClick={() => onViewFood(merchant)}
@@ -296,7 +340,7 @@ export default function RoutePanel({
 
         <button
           type="button"
-          onClick={() => openDirections(mLat, mLng)}
+          onClick={() => openDirections(mLat, mLng, userLocation?.latitude, userLocation?.longitude, travelMode)}
           style={{
             background: "#FFFFFF",
             border: "1px solid #DCE6E3",

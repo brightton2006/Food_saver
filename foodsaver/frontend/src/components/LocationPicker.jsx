@@ -156,16 +156,32 @@ export default function LocationPicker({
             )}
           </div>
 
-          {/* Current Location Button: "📍 Use My Location" */}
-          <button
-            type="button"
-            onClick={handleUseMyLocation}
-            disabled={detecting}
-            className="px-4 py-2.5 bg-[#176B5B] hover:bg-[#0D4037] text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 disabled:opacity-50"
-          >
-            <span>{detecting ? "⏳" : "📍"}</span>
-            <span>{detecting ? "Acquiring GPS..." : "Use My Location"}</span>
-          </button>
+          {/* Location Actions: "Use My Current Location" and "Recenter Map" */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleUseMyLocation}
+              disabled={detecting}
+              className="px-4 py-2.5 bg-[#176B5B] hover:bg-[#0D4037] text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 disabled:opacity-50"
+              title="Detect your device GPS coordinates in real time"
+            >
+              <span>{detecting ? "⏳" : "📍"}</span>
+              <span>{detecting ? "Acquiring GPS..." : "Use My Current Location"}</span>
+            </button>
+
+            {currentLocation?.latitude && currentLocation?.longitude && (
+              <button
+                type="button"
+                onClick={handleUseMyLocation}
+                disabled={detecting}
+                className="px-3 py-2.5 bg-white hover:bg-[#F7FAF9] text-[#176B5B] font-bold rounded-xl text-xs border border-[#D8E5E2] shadow-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95"
+                title="Recenter map on your real coordinates"
+              >
+                <span>🎯</span>
+                <span className="hidden sm:inline">Recenter Map</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Bottom Row: Current Location Display & GPS Status */}
@@ -174,7 +190,7 @@ export default function LocationPicker({
             <span className="text-[#176B5B] text-sm">📍</span>
             <span className="text-xs font-semibold text-[#65736F]">Current Location:</span>
             <strong className="text-xs sm:text-sm font-bold text-[#172321] truncate max-w-md">
-              {currentLocation?.address || "Detecting live location..."}
+              {currentLocation?.address || (detecting ? "Detecting live GPS location..." : "Location not detected yet")}
             </strong>
           </div>
 
@@ -183,6 +199,11 @@ export default function LocationPicker({
               <span className="text-[11px] text-[#65736F] font-mono">
                 {Number(currentLocation.latitude).toFixed(4)}° N, {Number(currentLocation.longitude).toFixed(4)}° E
               </span>
+              {currentLocation.accuracy && (
+                <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200">
+                  ±{Math.round(currentLocation.accuracy)}m
+                </span>
+              )}
               {locationState === "granted" && (
                 <span className="text-[10px] font-bold bg-[#DDF4EE] text-[#176B5B] px-2.5 py-0.5 rounded-full border border-[#BDE8DE]">
                   GPS Active
@@ -193,29 +214,33 @@ export default function LocationPicker({
         </div>
       </div>
 
-      {/* State-specific Warning Banners */}
+      {/* State-specific Warning Banners (Exact Rule 5 Messages) */}
       {locationState === "denied" && (
-        <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between gap-2">
-          <span>Location permission is required to find FoodSaver stores near you.</span>
+        <div className="mt-3 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <span>
+            <strong>Permission Denied:</strong> Location access is disabled. Enable location permission in your browser or search for a location manually.
+          </span>
           <button
             type="button"
             onClick={onRequestPermission}
-            className="underline font-bold hover:text-rose-900"
+            className="underline font-bold text-rose-900 hover:text-rose-950 whitespace-nowrap text-left"
           >
-            Enable Now
+            Review Permission
           </button>
         </div>
       )}
 
       {locationState === "unavailable" && (
-        <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-          Unable to detect your device location. Please search your city above.
+        <div className="mt-3 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-2">
+          <span>
+            <strong>Notice:</strong> GPS/location services are unavailable on your device. Please search for a location manually.
+          </span>
         </div>
       )}
 
       {locationState === "poor_accuracy" && (
         <div className="mt-3 p-3 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 text-xs">
-          Your location accuracy is low. Move to an open area and click "Use My Location".
+          Your location accuracy is low. Move to an open area and click "Use My Current Location".
         </div>
       )}
     </div>

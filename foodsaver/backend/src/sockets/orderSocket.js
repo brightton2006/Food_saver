@@ -45,6 +45,51 @@ module.exports = function setupOrderSockets(io) {
       }
     });
 
+    // Real-time tracking rooms for orders
+    socket.on("customer:join-tracking", ({ orderId } = {}) => {
+      if (orderId) {
+        socket.join(`tracking:${orderId}`);
+        socket.join(`order_tracking_${orderId}`);
+      }
+    });
+
+    socket.on("merchant:join-tracking", ({ orderId } = {}) => {
+      if (orderId) {
+        socket.join(`tracking:${orderId}`);
+        socket.join(`order_tracking_${orderId}`);
+      }
+    });
+
+    socket.on("merchant:location-update", async (data = {}) => {
+      const { orderId, latitude, longitude, merchantId, accuracy, timestamp } = data;
+      const finalLat = Number(latitude);
+      const finalLng = Number(longitude);
+      if (orderId && !isNaN(finalLat) && !isNaN(finalLng)) {
+        try {
+          if (store.updateOrderTrackingLocation) {
+            await store.updateOrderTrackingLocation(orderId, merchantId, {
+              latitude: finalLat,
+              longitude: finalLng,
+              accuracy,
+            });
+          }
+        } catch (e) {
+          console.warn("[SOCKET] Location persist warning:", e.message);
+        }
+
+        const payload = {
+          orderId,
+          latitude: finalLat,
+          longitude: finalLng,
+          accuracy: accuracy || 10,
+          timestamp: timestamp || Date.now(),
+        };
+
+        io.to(`tracking:${orderId}`).emit("tracking:location-update", payload);
+        io.to(`order_tracking_${orderId}`).emit("tracking:location-update", payload);
+      }
+    });
+
     socket.on("disconnect", () => {});
   });
 };

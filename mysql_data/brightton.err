@@ -1,0 +1,49 @@
+2026-10-03T05:13:26.146609Z 0 [System] [MY-013169] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe (mysqld 8.0.45) initializing of server in progress as process 18816
+2026-10-03T05:13:26.167423Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2026-10-03T05:13:26.388293Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2026-10-03T05:13:27.773184Z 6 [Warning] [MY-010453] [Server] root@localhost is created with an empty password ! Please consider switching off the --initialize-insecure option.
+2026-10-03T05:13:48.152842Z 0 [System] [MY-010116] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe (mysqld 8.0.45) starting as process 23076
+2026-10-03T05:13:48.169883Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2026-10-03T05:13:48.342170Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2026-10-03T05:13:48.603755Z 0 [Warning] [MY-010068] [Server] CA certificate ca.pem is self signed.
+2026-10-03T05:13:48.604040Z 0 [System] [MY-013602] [Server] Channel mysql_main configured to support TLS. Encrypted connections are now supported for this channel.
+2026-10-03T05:13:48.633065Z 0 [System] [MY-011323] [Server] X Plugin ready for connections. Bind-address: '::' port: 33060
+2026-10-03T05:13:48.633141Z 0 [System] [MY-010931] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe: ready for connections. Version: '8.0.45'  socket: ''  port: 3306  MySQL Community Server - GPL.
+2026-10-03T05:16:32Z UTC - mysqld got exception 0xc0000005 ;
+Most likely, you have hit a bug, but this error can also be caused by malfunctioning hardware.
+Thread pointer: 0x0
+Attempting backtrace. You can use the following information to find out
+where mysqld died. If you see no messages after this, something went
+terribly wrong...
+7fff3187a679    ntdll.dll!???
+7ffeaf3d1689    jemalloc.dll!je_malloc_usable_size()
+7ffeaf3d01e5    jemalloc.dll!je_malloc_usable_size()
+7ffeaf3d1e10    jemalloc.dll!je_malloc_usable_size()
+7ffeaf3d1968    jemalloc.dll!je_malloc_usable_size()
+7ffeaf3d3ac6    jemalloc.dll!je_malloc_usable_size()
+7ffeaf3a03d0    jemalloc.dll!???
+7ff6355d7c8d    mysqld.exe!???
+7ff6355d7a05    mysqld.exe!???
+7ff635d8f75e    mysqld.exe!???
+7ff635d8f7cf    mysqld.exe!???
+7ff6345ca60e    mysqld.exe!???
+7ff63490a16f    mysqld.exe!???
+7ff6345ca682    mysqld.exe!???
+7ff63453d7af    mysqld.exe!???
+7ff63453db63    mysqld.exe!???
+7ff635b82409    mysqld.exe!???
+7ff6355d538c    mysqld.exe!???
+7fff2ef0cd30    ucrtbase.dll!wcsrchr()
+7fff30c6cdf7    KERNEL32.DLL!???
+7fff3189ee4c    ntdll.dll!???
+The manual page at http://dev.mysql.com/doc/mysql/en/crashing.html contains
+information that should help you find out what is causing the crash.
+2026-10-03T05:31:26.616995Z 0 [System] [MY-010116] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe (mysqld 8.0.45) starting as process 12188
+2026-10-03T05:31:26.637304Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2026-10-03T05:31:27.097692Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2026-10-03T05:31:27.242972Z 0 [System] [MY-010229] [Server] Starting XA crash recovery...
+2026-10-03T05:31:27.246574Z 0 [System] [MY-010232] [Server] XA crash recovery finished.
+2026-10-03T05:31:27.360954Z 0 [Warning] [MY-010068] [Server] CA certificate ca.pem is self signed.
+2026-10-03T05:31:27.361342Z 0 [System] [MY-013602] [Server] Channel mysql_main configured to support TLS. Encrypted connections are now supported for this channel.
+2026-10-03T05:31:27.398932Z 0 [System] [MY-011323] [Server] X Plugin ready for connections. Bind-address: '::' port: 33060
+2026-10-03T05:31:27.399015Z 0 [System] [MY-010931] [Server] C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqld.exe: ready for connections. Version: '8.0.45'  socket: ''  port: 3306  MySQL Community Server - GPL.

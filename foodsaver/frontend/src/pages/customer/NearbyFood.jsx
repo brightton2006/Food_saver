@@ -18,6 +18,7 @@ import {
   clearWatch,
   reverseGeocode,
   fetchNearbyMerchants,
+  fetchNearbyLocations,
   fetchNearbyFood,
   openDirections,
   syncUserLocationToBackend,
@@ -25,20 +26,22 @@ import {
 } from "../../services/locationService.js";
 
 const CATEGORIES = [
-  { id: "All", label: "All Near Me", icon: "🍽️" },
-  { id: "South Indian", label: "South Indian", icon: "🥟" },
-  { id: "Biryani", label: "Biryani & Meals", icon: "🍛" },
-  { id: "Fast Food", label: "Pizza & Fast Food", icon: "🍕" },
-  { id: "Beverages", label: "Beverages & Milk", icon: "☕" },
-  { id: "Starters", label: "Starters & Snacks", icon: "🍗" },
+  { id: "All", label: "All Restaurants", icon: "🍽️" },
+  { id: "NightDeals", label: "🌙 Night Flash Deals", icon: "🌙" },
+  { id: "Vegetarian", label: "Vegetarian", icon: "🥗" },
+  { id: "Non-Vegetarian", label: "Non-Vegetarian", icon: "🍗" },
+  { id: "Biryani", label: "Biryani", icon: "🍛" },
+  { id: "Bakery", label: "Bakery", icon: "🥐" },
+  { id: "Cafe", label: "Cafe", icon: "☕" },
+  { id: "Meals", label: "Meals", icon: "🍲" },
 ];
 
 const RADIUS_OPTIONS = [
-  { value: 0.5, label: "500 m" },
   { value: 1.0, label: "1 km" },
   { value: 2.0, label: "2 km", isDefault: true },
   { value: 5.0, label: "5 km" },
   { value: 10.0, label: "10 km" },
+  { value: 25.0, label: "25 km" },
 ];
 
 // Live Countdown Timer component
@@ -67,10 +70,11 @@ export default function NearbyFood() {
   const { session } = useSession();
   const { addItem } = useCart();
 
-  // Location State
-  const [userLocation, setUserLocation] = useState(DEFAULT_COORDINATES);
-  const [locationStatus, setLocationStatus] = useState("loading"); // "loading" | "granted" | "denied" | "unavailable" | "poor_accuracy"
+  // Location State (Real Device GPS; never substitute hardcoded location as user's position)
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("idle"); // "idle" | "loading" | "granted" | "denied" | "unavailable"
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const watchIdRef = useRef(null);
 
   // Data States
   const [merchants, setMerchants] = useState([]);
@@ -100,15 +104,42 @@ export default function NearbyFood() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // 1. Initial Real Device Location Request on Mount
+  // Stop watching on unmount
   useEffect(() => {
-    detectRealLocation();
+    return () => {
+      if (watchIdRef.current !== null) {
+        clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
   }, []);
 
-  const detectRealLocation = async () => {
+  // 1. Initial Permission Check on Mount (Do not prompt invasively if not granted)
+  useEffect(() => {
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions
+        .query({ name: "geolocation" })
+        .then((permissionStatus) => {
+          if (permissionStatus.state === "granted") {
+            detectRealLocation(true);
+          } else if (permissionStatus.state === "denied") {
+            setLocationStatus("denied");
+          } else {
+            setLocationStatus("idle");
+          }
+        })
+        .catch(() => {
+          setLocationStatus("idle");
+        });
+    } else {
+      setLocationStatus("idle");
+    }
+  }, []);
+
+  const detectRealLocation = async (isBackground = false) => {
     setLocationStatus("loading");
     try {
-      const pos = await getCurrentLocation({ enableHighAccuracy: true, timeout: 10000 });
+      const pos = await getCurrentLocation({ enableHighAccuracy: true, timeout: 12000 });
       const address = await reverseGeocode(pos.latitude, pos.longitude);
 
       const detected = {
@@ -116,11 +147,32 @@ export default function NearbyFood() {
         longitude: pos.longitude,
         accuracy: pos.accuracy || 15.0,
         timestamp: pos.timestamp || Date.now(),
-        address,
+        address: address || "Current Location",
       };
 
       setUserLocation(detected);
       setLocationStatus("granted");
+      showToast(`📍 Location detected: ${detected.address}`);
+
+      // Start continuous watchPosition to monitor location as user moves
+      if (watchIdRef.current !== null) {
+        clearWatch(watchIdRef.current);
+      }
+      watchIdRef.current = watchUserLocation(
+        (updatedPos) => {
+          setUserLocation((prev) => ({
+            ...prev,
+            latitude: updatedPos.latitude,
+            longitude: updatedPos.longitude,
+            accuracy: updatedPos.accuracy || prev?.accuracy,
+            timestamp: updatedPos.timestamp || Date.now(),
+          }));
+        },
+        (watchErr) => {
+          console.warn("watchPosition notice:", watchErr);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
 
       // Background sync to backend if user is logged in
       if (session?.userId) {
@@ -128,26 +180,54 @@ export default function NearbyFood() {
       }
     } catch (err) {
       console.warn("Location detection note:", err);
-      setLocationStatus(err.code === 1 ? "denied" : "unavailable");
-      // Fallback gracefully to default coordinates
-      setUserLocation(DEFAULT_COORDINATES);
+      if (err.code === 1) {
+        setLocationStatus("denied");
+      } else {
+        setLocationStatus("unavailable");
+      }
     }
   };
 
   // 2. Fetch Nearby Stores & Food whenever Location or Radius Changes
   useEffect(() => {
-    if (!userLocation.latitude || !userLocation.longitude) return;
+    if (!userLocation?.latitude || !userLocation?.longitude) {
+      // If user hasn't shared location yet, load general directory hotels so the page isn't blank
+      loadGeneralDirectoryHotels();
+      return;
+    }
     loadNearbyData();
-  }, [userLocation.latitude, userLocation.longitude, radiusKm, selectedCategory]);
+  }, [userLocation?.latitude, userLocation?.longitude, radiusKm, selectedCategory]);
+
+  const loadGeneralDirectoryHotels = async () => {
+    setLoading(true);
+    setLoadingMerchants(true);
+    try {
+      const res = await api.getHotels({ status: "active", category: selectedCategory === "All" ? "" : selectedCategory });
+      if (res && res.hotels) {
+        setMerchants(res.hotels);
+      }
+    } catch (err) {
+      console.warn("Directory hotels load:", err);
+    } finally {
+      setLoading(false);
+      setLoadingMerchants(false);
+    }
+  };
 
   const loadNearbyData = async () => {
+    if (!userLocation?.latitude || !userLocation?.longitude) return;
+
     setLoading(true);
     setLoadingMerchants(true);
 
     try {
       // Parallel fetch for speed & accuracy
-      const [merchantsData, foodData] = await Promise.all([
-        fetchNearbyMerchants(userLocation.latitude, userLocation.longitude, radiusKm),
+      const [nearbyLocsResult, foodData] = await Promise.all([
+        fetchNearbyLocations(userLocation.latitude, userLocation.longitude, radiusKm, {
+          category: selectedCategory === "All" ? "" : selectedCategory,
+          searchQuery,
+          sortBy,
+        }),
         fetchNearbyFood(
           userLocation.latitude,
           userLocation.longitude,
@@ -156,8 +236,17 @@ export default function NearbyFood() {
         ),
       ]);
 
-      setMerchants(merchantsData);
-      setNearbyListings(foodData);
+      let businesses = nearbyLocsResult?.businesses || [];
+      if (!businesses.length && nearbyLocsResult?.merchants?.length) {
+        businesses = nearbyLocsResult.merchants;
+      }
+      if (!businesses.length) {
+        const fallbackMerchants = await fetchNearbyMerchants(userLocation.latitude, userLocation.longitude, radiusKm);
+        businesses = fallbackMerchants || [];
+      }
+
+      setMerchants(businesses);
+      setNearbyListings(foodData || []);
     } catch (err) {
       console.error("Failed to load nearby data:", err);
     } finally {
@@ -168,6 +257,8 @@ export default function NearbyFood() {
 
   // 3. Socket.io Live Real-Time Integration for Fresh Surplus Food Alerts
   useEffect(() => {
+    if (!userLocation?.latitude || !userLocation?.longitude) return;
+
     try {
       const socket = io(API_BASE, { reconnectionDelayMax: 10000 });
       socketRef.current = socket;
@@ -207,7 +298,7 @@ export default function NearbyFood() {
     } catch (e) {
       console.warn("Socket connection note:", e);
     }
-  }, [userLocation.latitude, userLocation.longitude, radiusKm]);
+  }, [userLocation?.latitude, userLocation?.longitude, radiusKm]);
 
   // 4. Client-side Processing: Search Query, Dietary Filter, Sorting, Merchant Filter
   const processedListings = useMemo(() => {
@@ -242,6 +333,13 @@ export default function NearbyFood() {
       result = result.filter((item) => item.isVeg === false);
     }
 
+    // Night Flash Deals filter
+    if (selectedCategory === "NightDeals") {
+      result = result.filter(
+        (item) => item.isNightSale || (item.expiresAt && (new Date(item.expiresAt).getHours() >= 18 || new Date(item.expiresAt).getHours() <= 4))
+      );
+    }
+
     // Sorting
     if (sortBy === "distance") {
       result.sort((a, b) => (a.distanceKm || 999) - (b.distanceKm || 999));
@@ -254,7 +352,7 @@ export default function NearbyFood() {
     }
 
     return result;
-  }, [nearbyListings, selectedMerchantFilter, searchQuery, dietaryFilter, sortBy]);
+  }, [nearbyListings, selectedMerchantFilter, searchQuery, dietaryFilter, sortBy, selectedCategory]);
 
   return (
     <div className="min-h-screen bg-[#F7FAF9] text-[#172321] font-sans pb-28 selection:bg-[#176B5B] selection:text-white">
@@ -305,6 +403,40 @@ export default function NearbyFood() {
             }}
             onRequestPermission={() => setShowLocationModal(true)}
           />
+
+          {/* Friendly Location Permission & Explanation Banner when location has not been enabled yet */}
+          {locationStatus === "idle" && !userLocation && (
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-xs shrink-0">
+                  📍
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Find Food Businesses Near You
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Click <strong>"Use My Current Location"</strong> to detect your real GPS coordinates and find nearby FoodSaver partner hotels, restaurants, bakeries, and available food offers.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => detectRealLocation(false)}
+                className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-xs transition-all whitespace-nowrap active:scale-95 flex items-center gap-2"
+              >
+                <span>📍</span> Use My Current Location
+              </button>
+            </div>
+          )}
+
+          {/* Detecting Real GPS Position Loading State */}
+          {locationStatus === "loading" && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 shadow-xs flex items-center gap-3 text-emerald-800 text-xs font-semibold">
+              <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
+              <span>Detecting your real device GPS position and finding nearby surplus deals...</span>
+            </div>
+          )}
 
           {/* Row 1: Search & Radius Selector */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">

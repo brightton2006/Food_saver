@@ -6,19 +6,19 @@ import { useSession } from "../lib/session.jsx";
 import NoImagePlaceholder from "./NoImagePlaceholder.jsx";
 import { getFoodFallbackImage } from "../lib/foodImageService.js";
 
-const CATEGORY_RATINGS = {
-  Bakery: 4.8,
-  Cafe: 4.6,
-  Meals: 4.7,
-  Restaurant: 4.7,
-  Snacks: 4.5,
-  "Home-baker": 4.9,
-  Grocery: 4.5,
-};
 
-function formatDistance(address) {
-  const base = (address?.length ?? 5) % 5;
-  return `${(0.8 + base * 0.3).toFixed(1)} km`;
+
+function formatDistance(listing) {
+  if (listing.distanceFormatted) return listing.distanceFormatted;
+  if (listing.distance_km !== undefined && listing.distance_km !== null) {
+    const d = Number(listing.distance_km);
+    return d < 1 ? `${Math.round(d * 1000)} m away` : `${d.toFixed(1)} km away`;
+  }
+  if (listing.distanceKm !== undefined && listing.distanceKm !== null) {
+    const d = Number(listing.distanceKm);
+    return d < 1 ? `${Math.round(d * 1000)} m away` : `${d.toFixed(1)} km away`;
+  }
+  return "";
 }
 
 export default function ListingCard({ listing, onClaim, isMerchant = false }) {
@@ -46,11 +46,11 @@ export default function ListingCard({ listing, onClaim, isMerchant = false }) {
         Math.round((1 - listing.discountPrice / listing.originalPrice) * 100),
       )
     : 0;
-  const rating = CATEGORY_RATINGS[listing.category] ?? 4.7;
-  const distance = formatDistance(listing.address);
+  const rating = listing.rating ? Number(listing.rating) : null;
+  const distance = formatDistance(listing);
   const timer = useCountdown(listing.expiresAt, listing.createdAt);
   const isVeg = !/chicken|mutton|egg|fish|meen|kari/i.test(listing.itemName);
-  const qtyLeft = listing.quantityAvailable ?? listing.quantityTotal ?? 5;
+  const qtyLeft = listing.quantityAvailable ?? listing.quantityTotal ?? 0;
 
   function handleAddToCartClick(e) {
     e.stopPropagation();
@@ -147,11 +147,21 @@ export default function ListingCard({ listing, onClaim, isMerchant = false }) {
             }}
           />
 
-          {/* TOP LEFT: VEG/NON-VEG BADGE */}
-          <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 6, zIndex: 2 }}>
+          {/* TOP LEFT: VEG/NON-VEG BADGE & NIGHT DEAL */}
+          <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 5, zIndex: 2, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 12, background: isVeg ? "rgba(34,197,94,0.9)" : "rgba(239,68,68,0.9)", color: "#fff", fontWeight: 700 }}>
               {isVeg ? "🟢 Veg" : "🔴 Non-Veg"}
             </span>
+            {listing.isNightSale && (
+              <span style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 12, background: "#f59e0b", color: "#091312", fontWeight: 900, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                🌙 Night Deal
+              </span>
+            )}
+            {listing.isClosingSoon && !timer.isClosed && (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 12, background: "#ef4444", color: "#fff", fontWeight: 800 }}>
+                ⏳ Closing Soon
+              </span>
+            )}
           </div>
 
           {/* TOP RIGHT: FAVORITE SAVE BUTTON (♡ → ✓ Saved) */}
@@ -226,7 +236,7 @@ export default function ListingCard({ listing, onClaim, isMerchant = false }) {
             <h3 className="restaurant-card-title" title={listing.itemName}>
               {listing.itemName}
             </h3>
-            <span className="compact-rating-badge">★ {rating.toFixed(1)}</span>
+            {rating !== null && <span className="compact-rating-badge">★ {rating.toFixed(1)}</span>}
           </div>
 
           <div className="card-cuisine-line" style={{ color: "var(--color-text-secondary, #66736F)", fontSize: 13.5, fontWeight: 500 }}>
@@ -235,9 +245,17 @@ export default function ListingCard({ listing, onClaim, isMerchant = false }) {
 
           {/* 3. LOCATION & DISTANCE */}
           <div className="card-location-line" style={{ display: "flex", justifyContent: "space-between", color: "#66736F", fontWeight: 600, fontSize: 13 }}>
-            <span>📍 {listing.address || "Kovilpatti Counter"}</span>
-            <span style={{ color: "#2D3B37", fontWeight: 800 }}>{distance}</span>
+            <span>📍 {listing.address || "Local Kitchen"}</span>
+            {distance ? <span style={{ color: "#2D3B37", fontWeight: 800 }}>{distance}</span> : null}
           </div>
+
+          {/* SAFE STORAGE & PREPARATION BADGE */}
+          {listing.safeStorageInfo && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#10b981", background: "rgba(16, 185, 129, 0.1)", padding: "3px 8px", borderRadius: 6, marginTop: 4 }}>
+              <span>🛡️</span>
+              <span style={{ fontWeight: 600 }}>{listing.safeStorageInfo}</span>
+            </div>
+          )}
 
           {/* 4. PRICE DISPLAY (ORIGINAL STRIKETHROUGH + FLASH PRICE) */}
           <div className="card-row-price-distance" style={{ marginTop: 6, display: "flex", alignItems: "baseline", gap: 8 }}>

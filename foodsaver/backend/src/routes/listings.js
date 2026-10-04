@@ -1,9 +1,43 @@
 const express = require("express");
 const store = require("../data/store");
-const { notifyNearbyCustomersForListing } = require("../services/notificationService");
+const {
+  notifyNearbyCustomersForListing,
+  notifyNearbyCustomersForNightSale,
+} = require("../services/notificationService");
 
 module.exports = function listingsRouter(io) {
   const router = express.Router();
+
+  // GET /api/listings/night-sales — dedicated Night-Time Surplus Flash Sales Feed
+  router.get("/night-sales", async (req, res) => {
+    try {
+      const { lat, lng, radius = 2.0, category = "All", searchQuery = "", city = "Kovilpatti" } = req.query;
+      const data = await store.getNightSaleListings({
+        lat: Number(lat) || 9.1724,
+        lng: Number(lng) || 77.8694,
+        radiusKm: Number(radius) || 2.0,
+        category,
+        searchQuery,
+        city,
+      });
+      res.json({ success: true, ...data });
+    } catch (err) {
+      console.error("Error fetching night sales:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // GET /api/listings/merchant-summary/:merchantIdentifier — merchant night-sales dashboard breakdown
+  router.get("/merchant-summary/:merchantIdentifier", async (req, res) => {
+    try {
+      const summary = await store.getMerchantNightSalesSummary(req.params.merchantIdentifier);
+      if (!summary) return res.status(404).json({ error: "Merchant not found" });
+      res.json({ success: true, ...summary });
+    } catch (err) {
+      console.error("Error fetching merchant night sales summary:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // GET /api/listings/hotels — list all APPROVED merchant hotels for customers
   router.get("/hotels", async (req, res) => {
@@ -118,8 +152,8 @@ module.exports = function listingsRouter(io) {
     }
   });
 
-  // POST /api/listings — merchant posts new surplus stock
-  router.post("/", async (req, res) => {
+  // POST /api/listings & /api/listings/night-sale — merchant posts new surplus stock
+  const handlePostListing = async (req, res, isNightSaleEndpoint = false) => {
     try {
       const payload = req.body || {};
       const merchantName = payload.merchantName || payload.hotelName || payload.merchantUsername;
@@ -141,20 +175,124 @@ module.exports = function listingsRouter(io) {
         });
       }
 
-      const { itemName, quantityTotal, discountPrice } = payload;
+      const { itemName, quantityTotal, discountPrice, originalPrice } = payload;
       if (!itemName || !quantityTotal || discountPrice === undefined) {
         return res.status(400).json({
           error: "itemName, quantityTotal and discountPrice are required",
         });
       }
 
-      const listing = await store.createListing(payload);
+      // Pricing validation
+      const dPrice = Number(discountPrice);
+      const oPrice = Number(originalPrice || dPrice);
+      if (dPrice < 0 || oPrice < 0) {
+        return res.status(400).json({ error: "Prices cannot be negative." });
+      }
+      if (dPrice > oPrice) {
+        return res.status(400).json({ error: "Discounted selling price cannot be higher than original price." });
+      }
 
-      // AUTOMATIC 2 KM CUSTOMER PROXIMITY NOTIFICATION DISPATCH
-      notifyNearbyCustomersForListing(listing, io).catch((e) => console.error(e));
+      // Food safety validation for night sales
+      const isNight = Boolean(isNightSaleEndpoint || payload.isNightSale || payload.is_night_sale);
+      if (isNight && payload.foodSafetyApproved === false) {
+        return res.status(400).json({
+          error: "food_safety_required",
+          message: "Merchant food safety and hygiene declaration is mandatory before publishing night-time surplus offers.",
+        });
+      }
+
+      const listing = await store.createListing({
+        ...payload,
+        isNightSale: isNight,
+      });
+
+      // DISPATCH PROXIMITY NOTIFICATIONS ACCORDING TO RADIUS
+      if (isNight) {
+        const radius = Number(payload.notificationRadius || payload.radius || 2.0);
+        notifyNearbyCustomersForNightSale(listing, io, radius).catch((e) => console.error(e));
+        io.emit("night_sale:created", listing);
+      } else {
+        notifyNearbyCustomersForListing(listing, io).catch((e) => console.error(e));
+      }
 
       io.emit("listing:created", listing);
-      res.status(201).json({ listing });
+      res.status(201).json({ success: true, listing });
+    } catch (err) {
+      console.error("Error creating listing:", err);
+      res.status(500).json({ error: err.message });
+    }
+  };
+
+  router.post("/night-sale", (req, res) => handlePostListing(req, res, true));
+  router.post("/", (req, res) => handlePostListing(req, res, false));
+
+  // POST /api/listings/:id/pause — Pause night offer
+  router.post("/:id/pause", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const merchantIdentifier = payload.merchantName || payload.hotelName || payload.merchantUsername;
+      const result = await store.pauseListing(req.params.id, merchantIdentifier);
+      if (result.error) return res.status(result.error === "not_found" ? 404 : 403).json(result);
+      io.emit("listing:updated", result.listing);
+      res.json({ success: true, listing: result.listing });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/listings/:id/resume — Resume paused offer
+  router.post("/:id/resume", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const merchantIdentifier = payload.merchantName || payload.hotelName || payload.merchantUsername;
+      const result = await store.resumeListing(req.params.id, merchantIdentifier);
+      if (result.error) return res.status(result.error === "not_found" ? 404 : 403).json(result);
+      io.emit("listing:updated", result.listing);
+      res.json({ success: true, listing: result.listing });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/listings/:id/sold-out — Mark item as sold out
+  router.post("/:id/sold-out", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const merchantIdentifier = payload.merchantName || payload.hotelName || payload.merchantUsername;
+      const result = await store.markListingSoldOut(req.params.id, merchantIdentifier);
+      if (result.error) return res.status(result.error === "not_found" ? 404 : 403).json(result);
+      io.emit("listing:updated", result.listing);
+      res.json({ success: true, listing: result.listing });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/listings/:id/remove-unsafe — Immediately withdraw unsafe food for food safety
+  router.post("/:id/remove-unsafe", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const merchantIdentifier = payload.merchantName || payload.hotelName || payload.merchantUsername;
+      const reason = payload.reason || "Removed for food safety precaution";
+      const result = await store.removeUnsafeListing(req.params.id, merchantIdentifier, reason);
+      if (result.error) return res.status(result.error === "not_found" ? 404 : 403).json(result);
+      io.emit("listing:updated", result.listing);
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/listings/:id/donate-to-ngo — Redirect remaining unsold food to NGO
+  router.post("/:id/donate-to-ngo", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const merchantIdentifier = payload.merchantName || payload.hotelName || payload.merchantUsername;
+      const result = await store.donateListingToNgo(req.params.id, merchantIdentifier);
+      if (result.error) return res.status(result.error === "not_found" ? 404 : 400).json(result);
+      io.emit("listing:updated", result.listing);
+      io.emit("donation:created", { donationId: result.donationId, listing: result.listing });
+      res.json({ success: true, ...result });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

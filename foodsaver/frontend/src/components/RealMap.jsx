@@ -25,6 +25,7 @@ export default function RealMap({
       foodItems={foodItems}
       radiusKm={radiusKm}
       onRadiusChange={onRadiusChange}
+      onSelectMerchantProp={onSelectMerchant}
       onViewFood={onViewFood}
       style={style}
       className={className}

@@ -371,11 +371,290 @@ async function saveMerchantLocation({ merchantId, userId, address, latitude, lon
   };
 }
 
+/**
+ * Unified discovery of verified FoodSaver merchants + genuine real-world places
+ * - Preserves FoodSaver approved merchants at top with surplus food details
+ * - Adds real-world places (restaurants, bakeries, cafes) within radius (1, 2, 5, 10, 25 km)
+ * - Returns GeoJSON format for all locations
+ */
+async function getNearbyDiscovery({
+  lat,
+  lng,
+  radiusKm = 5.0,
+  category = "All",
+  searchQuery = "",
+  sortBy = "distance",
+  hasSurplusOnly = false,
+  includeExternal = true,
+}) {
+  const { getNearbyRealWorldPlaces } = require("./placesService");
+
+  const latitude = Number(lat) || 9.1724;
+  const longitude = Number(lng) || 77.8694;
+  let radius = Number(radiusKm) || 5.0;
+  if (radius > 100) radius = radius / 1000;
+  if (radius > 50) radius = 50.0;
+
+  // 1. Fetch verified FoodSaver merchants from MySQL
+  const verifiedMerchants = await getNearbyMerchants({
+    lat: latitude,
+    lng: longitude,
+    radiusKm: radius,
+    searchQuery,
+  });
+
+  const partners = verifiedMerchants.map((m) => ({
+    ...m,
+    isFoodSaverPartner: true,
+  }));
+
+  // If customer asked only for partners with surplus food
+  if (hasSurplusOnly || String(hasSurplusOnly) === "true") {
+    const withFood = partners.filter((p) => p.availableFoodCount > 0);
+    return {
+      center: { lat: latitude, lng: longitude },
+      radiusKm: radius,
+      totalCount: withFood.length,
+      verifiedPartnersCount: withFood.length,
+      discoveredPlacesCount: 0,
+      businesses: withFood,
+      merchants: withFood,
+      externalPlaces: [],
+    };
+  }
+
+  // 2. Fetch real-world external places
+  let externalPlaces = [];
+  if (includeExternal !== false && String(includeExternal) !== "false") {
+    try {
+      externalPlaces = await getNearbyRealWorldPlaces(latitude, longitude, radius, category);
+      if (searchQuery && searchQuery.trim()) {
+        const sq = searchQuery.trim().toLowerCase();
+        externalPlaces = externalPlaces.filter(
+          (p) =>
+            p.name.toLowerCase().includes(sq) ||
+            p.category.toLowerCase().includes(sq) ||
+            p.address.toLowerCase().includes(sq)
+        );
+      }
+    } catch (err) {
+      console.warn("External places discovery notice:", err.message);
+    }
+  }
+
+  // 3. Deduplicate: if external place matches verified merchant coordinates (< 75m), omit external duplicate
+  const filteredExternal = externalPlaces.filter((ext) => {
+    return !partners.some((m) => {
+      const dist = calculateHaversineKm(m.latitude, m.longitude, ext.latitude, ext.longitude);
+      return dist < 0.075;
+    });
+  });
+
+  // 4. Combine: FoodSaver verified partners ALWAYS come first with their special status and surplus food count
+  let combined = [...partners, ...filteredExternal];
+
+  // 5. Apply sorting
+  if (sortBy === "distance") {
+    combined.sort((a, b) => {
+      if (a.hasSurplusFood && !b.hasSurplusFood) return -1;
+      if (!a.hasSurplusFood && b.hasSurplusFood) return 1;
+      return a.distanceKm - b.distanceKm;
+    });
+  } else if (sortBy === "name") {
+    combined.sort((a, b) =>
+      (a.businessName || a.name || "").localeCompare(b.businessName || b.name || "")
+    );
+  }
+
+  return {
+    center: { lat: latitude, lng: longitude },
+    radiusKm: radius,
+    totalCount: combined.length,
+    verifiedPartnersCount: partners.length,
+    discoveredPlacesCount: filteredExternal.length,
+    businesses: combined,
+    merchants: partners,
+    externalPlaces: filteredExternal,
+  };
+}
+
+/**
+ * Autocomplete and search across verified merchants and real geocoded locations
+ */
+async function searchLocationsAndPlaces({ query = "", lat, lng, radiusKm = 25.0 }) {
+  const { searchGeocodedLocations } = require("./geocodingService");
+  const q = String(query || "").trim();
+  if (!q) return [];
+
+  const results = [];
+
+  // 1. Search verified FoodSaver merchants in MySQL
+  try {
+    const [merchantRows] = await pool.query(
+      `SELECT h.*, u.full_name as merchant_name,
+              COALESCE((
+                SELECT COUNT(*) FROM listings l
+                WHERE l.hotel_id = h.hotel_id AND l.status = 'active'
+                  AND l.expires_at > NOW() AND l.quantity_available > 0
+              ), 0) AS available_food_count
+       FROM hotels h
+       JOIN users u ON h.merchant_user_id = u.user_id
+       WHERE h.verification_status = 'approved'
+         AND (h.hotel_name LIKE ? OR h.cuisine LIKE ? OR h.address LIKE ? OR h.location_city LIKE ?)
+       LIMIT 5`,
+      [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`]
+    );
+
+    for (const r of merchantRows) {
+      const rLat = Number(r.latitude);
+      const rLng = Number(r.longitude);
+      const distKm = lat && lng ? calculateHaversineKm(lat, lng, rLat, rLng) : null;
+      results.push({
+        type: "merchant",
+        id: r.hotel_id,
+        merchantId: r.merchant_user_id || r.hotel_id,
+        hotelId: r.hotel_id,
+        title: r.hotel_name,
+        subtitle: `${r.cuisine || "Restaurant"} • ${r.address || r.location_city || "Tamil Nadu"}`,
+        lat: rLat,
+        lng: rLng,
+        latitude: rLat,
+        longitude: rLng,
+        location: { type: "Point", coordinates: [rLng, rLat] },
+        isFoodSaverPartner: true,
+        availableFoodCount: Number(r.available_food_count || 0),
+        hasSurplusFood: Number(r.available_food_count || 0) > 0,
+        distanceKm: distKm,
+        distanceText:
+          distKm !== null
+            ? distKm < 1
+              ? `${Math.round(distKm * 1000)} m away`
+              : `${distKm.toFixed(1)} km away`
+            : "",
+      });
+    }
+  } catch (err) {
+    console.warn("Search merchants error:", err.message);
+  }
+
+  // 2. Geocoding autocomplete (districts of Tamil Nadu, towns, streets, PIN codes)
+  try {
+    const geoResults = await searchGeocodedLocations(q);
+    for (const g of geoResults) {
+      const gLat = Number(g.latitude);
+      const gLng = Number(g.longitude);
+      const distKm = lat && lng ? calculateHaversineKm(lat, lng, gLat, gLng) : null;
+      results.push({
+        type: "location",
+        id: `loc_${gLat.toFixed(4)}_${gLng.toFixed(4)}`,
+        title: g.displayName.split(",")[0].trim(),
+        subtitle: g.displayName,
+        lat: gLat,
+        lng: gLng,
+        latitude: gLat,
+        longitude: gLng,
+        location: { type: "Point", coordinates: [gLng, gLat] },
+        distanceKm: distKm,
+        distanceText: distKm !== null ? `${distKm.toFixed(1)} km from you` : "",
+      });
+    }
+  } catch (err) {
+    console.warn("Geocoded locations search error:", err.message);
+  }
+
+  return results;
+}
+
+/**
+ * Retrieve business details by ID (handles both FoodSaver merchants and external places)
+ */
+async function getBusinessDetails(id) {
+  if (!id) return null;
+
+  // 1. Check if FoodSaver merchant in MySQL
+  const [rows] = await pool.query(
+    `SELECT h.*, u.full_name as merchant_name, u.email,
+            COALESCE((
+              SELECT COUNT(*) FROM listings l
+              WHERE l.hotel_id = h.hotel_id AND l.status = 'active'
+                AND l.expires_at > NOW() AND l.quantity_available > 0
+            ), 0) AS available_food_count
+     FROM hotels h
+     JOIN users u ON h.merchant_user_id = u.user_id
+     WHERE h.hotel_id = ? OR h.merchant_user_id = ? LIMIT 1`,
+    [id, id]
+  );
+
+  if (rows.length > 0) {
+    const r = rows[0];
+    // Fetch active surplus listings for this merchant
+    const [listings] = await pool.query(
+      `SELECT l.*, c.name as category_name
+       FROM listings l
+       LEFT JOIN categories c ON l.category_id = c.category_id
+       WHERE l.hotel_id = ? AND l.status = 'active' AND l.expires_at > NOW() AND l.quantity_available > 0
+       ORDER BY l.expires_at ASC`,
+      [r.hotel_id]
+    );
+
+    return {
+      id: r.hotel_id,
+      merchantId: r.merchant_user_id || r.hotel_id,
+      hotelId: r.hotel_id,
+      businessName: r.hotel_name,
+      hotelName: r.hotel_name,
+      address: r.address,
+      city: r.location_city || "Kovilpatti",
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      lat: Number(r.latitude),
+      lng: Number(r.longitude),
+      location: {
+        type: "Point",
+        coordinates: [Number(r.longitude), Number(r.latitude)],
+      },
+      cuisine: r.cuisine || "Restaurant",
+      contactNumber: r.contact_number,
+      rating: Number(r.rating || 4.5),
+      availableFoodCount: Number(r.available_food_count || 0),
+      hasSurplusFood: Number(r.available_food_count || 0) > 0,
+      isFoodSaverPartner: true,
+      isVerified: r.verification_status === "approved",
+      listings: listings.map((l) => ({
+        id: l.listing_id,
+        foodName: l.item_name,
+        itemName: l.item_name,
+        price: Number(l.discount_price),
+        originalPrice: Number(l.original_price),
+        discountPrice: Number(l.discount_price),
+        quantityAvailable: Number(l.quantity_available),
+        isVeg: Boolean(l.is_veg),
+        category: l.category_name || "Food",
+        pickupWindowStart: l.pickup_window_start ? String(l.pickup_window_start).slice(0, 5) : "20:30",
+        pickupWindowEnd: l.pickup_window_end ? String(l.pickup_window_end).slice(0, 5) : "22:00",
+      })),
+    };
+  }
+
+  // 2. Fallback to external place representation
+  return {
+    id,
+    businessName: "Discovered Restaurant",
+    isFoodSaverPartner: false,
+    hasSurplusFood: false,
+    availableFoodCount: 0,
+    notice: "This business is not yet an approved FoodSaver surplus food partner.",
+  };
+}
+
 module.exports = {
   getNearbyListings,
   getNearbyCustomers,
   getNearbyNgos,
   getNearbyMerchants,
+  getNearbyDiscovery,
+  searchLocationsAndPlaces,
+  getBusinessDetails,
   saveUserLocation,
   saveMerchantLocation,
   calculateDistance,

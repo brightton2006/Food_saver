@@ -63,8 +63,25 @@ export const api = {
     request(`/api/food/nearby?latitude=${lat}&longitude=${lng}&radius=${radius}&category=${encodeURIComponent(category)}`),
   updateUserLocation: (payload) =>
     request("/api/users/location", { method: "POST", body: JSON.stringify(payload) }),
-  getHotels: () => request("/api/listings/hotels"),
-  getHotelDetails: (hotelId) => request(`/api/listings/hotels/${encodeURIComponent(hotelId)}`),
+  getHotels: () => request("/api/hotels"),
+  getHotel: (hotelId, lat = null, lng = null) =>
+    request(`/api/hotels/${encodeURIComponent(hotelId)}${lat && lng ? `?lat=${lat}&lng=${lng}` : ""}`),
+  getHotelFood: (hotelId) => request(`/api/hotels/${encodeURIComponent(hotelId)}/food`),
+  getHotelDetails: (hotelId) => request(`/api/hotels/${encodeURIComponent(hotelId)}`),
+  claimHotelDirectoryListing: (hotelId, payload) =>
+    request(`/api/merchant/hotels/${encodeURIComponent(hotelId)}/claim`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getMerchantHotels: () => request("/api/merchant/hotels"),
+  createMerchantHotel: (payload) =>
+    request("/api/merchant/hotels", { method: "POST", body: JSON.stringify(payload) }),
+  createMerchantFood: (payload) =>
+    request("/api/merchant/food", { method: "POST", body: JSON.stringify(payload) }),
+  updateMerchantFood: (id, payload) =>
+    request(`/api/merchant/food/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteMerchantFood: (id) =>
+    request(`/api/merchant/food/${encodeURIComponent(id)}`, { method: "DELETE" }),
   updateHotelProfile: (payload) =>
     request("/api/listings/hotel-profile", { method: "PUT", body: JSON.stringify(payload) }),
   getMerchantListings: (merchantName) =>
@@ -84,9 +101,22 @@ export const api = {
   lookupToken: (token) => request(`/api/claims/${token}`),
   collectToken: (token) => request(`/api/claims/${token}/collect`, { method: "POST" }),
   rerouteToNgo: (token) => request(`/api/claims/${token}/reroute-ngo`, { method: "POST" }),
-  getNotifications: (userId) => request(`/api/notifications?userId=${encodeURIComponent(userId || "guest")}`),
+  getNotifications: (userId, type = "all") =>
+    request(`/api/notifications?userId=${encodeURIComponent(userId || "guest")}&type=${encodeURIComponent(type)}`),
   markNotificationRead: (id, userId) =>
     request(`/api/notifications/${id}/read`, { method: "PATCH", body: JSON.stringify({ userId }) }),
+  markAllNotificationsRead: (userId) =>
+    request("/api/notifications/mark-all-read", { method: "POST", body: JSON.stringify({ userId }) }),
+  deleteNotification: (id, userId) =>
+    request(`/api/notifications/${id}`, { method: "DELETE", body: JSON.stringify({ userId }) }),
+
+  // SMS OTP Verification & Preferences
+  sendOtp: (payload) =>
+    request("/api/auth/send-otp", { method: "POST", body: JSON.stringify(payload) }),
+  verifyOtp: (payload) =>
+    request("/api/auth/verify-otp", { method: "POST", body: JSON.stringify(payload) }),
+  updatePreferences: (payload) =>
+    request("/api/auth/preferences", { method: "PUT", body: JSON.stringify(payload) }),
   createDonation: (payload) =>
     request("/api/donations", { method: "POST", body: JSON.stringify(payload) }),
   getNearbyDonations: (lat = 9.1724, lng = 77.8694, radius = 5.0) =>
@@ -178,6 +208,37 @@ export const api = {
   requestChangesAdminNgo: (id, reason) =>
     request(`/api/admin/ngos/${encodeURIComponent(id)}/request-changes`, { method: "POST", body: JSON.stringify({ reason }) }),
 
+  // Admin Hotel Directory & Map Pin Verification API methods
+  getAdminDirectoryHotels: (status = "all", locationStatus = "all", search = "") =>
+    request(`/api/admin/directory-hotels?status=${encodeURIComponent(status)}&locationStatus=${encodeURIComponent(locationStatus)}&search=${encodeURIComponent(search)}`),
+  updateAdminHotelLocation: (id, payload) =>
+    request(`/api/admin/hotels/${encodeURIComponent(id)}/location`, { method: "PUT", body: JSON.stringify(payload) }),
+  getAdminHotelClaims: () =>
+    request("/api/admin/hotel-claims"),
+  approveAdminHotelClaim: (id) =>
+    request(`/api/admin/hotel-claims/${encodeURIComponent(id)}/approve`, { method: "POST" }),
+  rejectAdminHotelClaim: (id, reason) =>
+    request(`/api/admin/hotel-claims/${encodeURIComponent(id)}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+  updateAdminHotelStatus: (id, payload) =>
+    request(`/api/admin/hotels/${encodeURIComponent(id)}/status`, { method: "PUT", body: JSON.stringify(payload) }),
+
+  // Hotel Directory & Nearby Discovery API methods
+  getHotels: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(q ? `/api/hotels?${q}` : "/api/hotels");
+  },
+  getNearbyHotels: (lat, lng, radiusKm = 5.0, category = "All") =>
+    request(`/api/hotels/nearby?lat=${lat}&lng=${lng}&radiusKm=${radiusKm}&category=${encodeURIComponent(category)}`),
+  getHotelById: (id, lat, lng) => {
+    let url = `/api/hotels/${encodeURIComponent(id)}`;
+    if (lat && lng) url += `?lat=${lat}&lng=${lng}`;
+    return request(url);
+  },
+  getHotelFood: (id) =>
+    request(`/api/hotels/${encodeURIComponent(id)}/food`),
+  searchHotels: (query, category = "All") =>
+    request(`/api/hotels/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`),
+
   // Token Verification & Order Completion API methods
   verifyPickupToken: (token, orderId, method = "TOKEN") =>
     request("/api/orders/verify-pickup", {
@@ -245,5 +306,31 @@ export const api = {
     request("/api/auth/refresh", { method: "POST", body: JSON.stringify({ token }) }),
   logout: () =>
     request("/api/auth/logout", { method: "POST" }),
+
+  // Night-Time Surplus Food Flash Sales API methods
+  getNightSales: ({ lat, lng, radius = 2.0, category = "All", searchQuery = "", city = "Kovilpatti" } = {}) => {
+    const params = new URLSearchParams();
+    if (lat) params.append("lat", lat);
+    if (lng) params.append("lng", lng);
+    if (radius) params.append("radius", radius);
+    if (category) params.append("category", category);
+    if (searchQuery) params.append("searchQuery", searchQuery);
+    if (city) params.append("city", city);
+    return request(`/api/listings/night-sales?${params.toString()}`);
+  },
+  createNightSale: (payload) =>
+    request("/api/listings/night-sale", { method: "POST", body: JSON.stringify(payload) }),
+  getMerchantNightSales: (merchantId) =>
+    request(`/api/listings/merchant-summary/${encodeURIComponent(merchantId)}`),
+  pauseListing: (id, merchantName) =>
+    request(`/api/listings/${encodeURIComponent(id)}/pause`, { method: "POST", body: JSON.stringify({ merchantName }) }),
+  resumeListing: (id, merchantName) =>
+    request(`/api/listings/${encodeURIComponent(id)}/resume`, { method: "POST", body: JSON.stringify({ merchantName }) }),
+  markListingSoldOut: (id, merchantName) =>
+    request(`/api/listings/${encodeURIComponent(id)}/sold-out`, { method: "POST", body: JSON.stringify({ merchantName }) }),
+  removeUnsafeListing: (id, merchantName, reason) =>
+    request(`/api/listings/${encodeURIComponent(id)}/remove-unsafe`, { method: "POST", body: JSON.stringify({ merchantName, reason }) }),
+  donateListingToNgo: (id, merchantName) =>
+    request(`/api/listings/${encodeURIComponent(id)}/donate-to-ngo`, { method: "POST", body: JSON.stringify({ merchantName }) }),
 };
 

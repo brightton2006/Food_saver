@@ -18,15 +18,14 @@ const LINKS = {
     { to: "/ngo", label: "Rescue Feed", end: true, icon: "🤝" },
     { to: "/ngo/donations", label: "Donations", icon: "🎁" },
   ],
-  admin: [
-    { to: "/admin", label: "Admin Console", end: true, icon: "🛡️" },
-  ],
+  admin: [{ to: "/admin", label: "Admin Console", end: true, icon: "🛡️" }],
 };
 
 export default function BottomNav() {
   const { session } = useSession();
   if (!session) return null;
-  const links = LINKS[session.role] || [];
+  const roleKey = (session.role || "").toLowerCase();
+  const links = LINKS[roleKey] || [];
 
   return (
     <nav className="bottom-nav" aria-label="Primary">

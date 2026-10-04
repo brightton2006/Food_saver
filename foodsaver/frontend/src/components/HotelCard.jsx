@@ -9,7 +9,7 @@ export default function HotelCard({ hotel, onSelectHotel }) {
     if (!item.originalPrice || !item.discountPrice) return max;
     const pct = Math.round(((item.originalPrice - item.discountPrice) / item.originalPrice) * 100);
     return pct > max ? pct : max;
-  }, 0) || 30;
+  }, 0) || 0;
 
   return (
     <div
@@ -23,6 +23,7 @@ export default function HotelCard({ hotel, onSelectHotel }) {
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
+        height: "100%",
         boxShadow: "0 8px 25px rgba(20, 92, 82, 0.08)",
         fontFamily: "'Poppins', 'Inter', system-ui, -apple-system, sans-serif",
       }}
@@ -64,22 +65,24 @@ export default function HotelCard({ hotel, onSelectHotel }) {
             ⚡ FREE PICKUP
           </span>
 
-          <span
-            style={{
-              background: "#145C52",
-              color: "#ffffff",
-              padding: "4px 9px",
-              borderRadius: 10,
-              fontSize: 11.5,
-              fontWeight: 900,
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-            }}
-          >
-            ★ {hotel.rating || 4.5}
-          </span>
+          {hotel.rating ? (
+            <span
+              style={{
+                background: "#145C52",
+                color: "#ffffff",
+                padding: "4px 9px",
+                borderRadius: 10,
+                fontSize: 11.5,
+                fontWeight: 900,
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+              }}
+            >
+              ★ {Number(hotel.rating).toFixed(1)}
+            </span>
+          ) : null}
         </div>
 
         {/* Bottom Image Offer Banner */}
@@ -103,7 +106,7 @@ export default function HotelCard({ hotel, onSelectHotel }) {
               textShadow: "0 2px 6px rgba(0,0,0,0.8)",
             }}
           >
-            {topDiscount > 0 ? `${topDiscount}% OFF UPTO ₹120` : "DAILY SURPLUS OFFERS"}
+            {topDiscount > 0 ? `${topDiscount}% OFF` : (hotel.items?.length > 0 ? "SURPLUS OFFERS" : "PARTNER RESTAURANT")}
           </strong>
         </div>
       </div>
@@ -116,20 +119,23 @@ export default function HotelCard({ hotel, onSelectHotel }) {
 
         {/* Rating + Delivery ETA line */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "#687674", marginBottom: 6 }}>
-          <span style={{ color: "#16796B", fontWeight: 800 }}>★ {hotel.rating || 4.2}</span>
-          <span>•</span>
-          <span>10-15 mins</span>
+          {hotel.rating ? <span style={{ color: "#16796B", fontWeight: 800 }}>★ {Number(hotel.rating).toFixed(1)} •</span> : null}
+          <span>{hotel.deliveryTime || "Fast Pickup"}</span>
         </div>
 
         {/* Cuisine Subtitle */}
-        <div style={{ fontSize: 12.5, color: "#16796B", fontWeight: 600, marginBottom: 4, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-          {hotel.cuisine || "South Indian • Meals • Fast Food"}
-        </div>
+        {hotel.cuisine ? (
+          <div style={{ fontSize: 12.5, color: "#16796B", fontWeight: 600, marginBottom: 4, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+            {hotel.cuisine}
+          </div>
+        ) : null}
 
         {/* Location Subtitle */}
-        <div style={{ fontSize: 12, color: "#687674", marginBottom: 12 }}>
-          {hotel.address || "Kovilpatti Main Road"}
-        </div>
+        {hotel.address ? (
+          <div style={{ fontSize: 12, color: "#687674", marginBottom: 12 }}>
+            {hotel.address}
+          </div>
+        ) : null}
 
         {/* Available Food Deals Preview */}
         <div
