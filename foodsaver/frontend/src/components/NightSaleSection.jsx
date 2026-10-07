@@ -7,6 +7,7 @@ import { getFoodFallbackImage } from "../lib/foodImageService.js";
 import PaymentModal from "./PaymentModal.jsx";
 import { addMyClaim } from "../lib/myClaims.js";
 import { useSession } from "../lib/session.jsx";
+import { useTranslation } from "../lib/i18n.jsx";
 import { getCurrentLocation } from "../services/locationService.js";
 import {
   Moon,
@@ -75,6 +76,7 @@ export default function NightSaleSection({
 }) {
   const navigate = useNavigate();
   const { session } = useSession();
+  const { t } = useTranslation();
 
   // Active Category Tab
   const [activeTab, setActiveTab] = useState("availableTonight");

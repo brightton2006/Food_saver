@@ -10,6 +10,8 @@ import PaymentMethodCard from "../components/PaymentMethodCard.jsx";
 import CardPayment from "../components/CardPayment.jsx";
 import UPIPayment from "../components/UPIPayment.jsx";
 
+import { useToast } from "../components/ToastProvider.jsx";
+
 const PAYMENT_METHODS = [
   { id: "upi", title: "UPI Payment", desc: "Google Pay, PhonePe, Paytm or BHIM", icon: "📱" },
   { id: "card", title: "Credit / Debit Card", desc: "Visa, Mastercard, RuPay, Amex", icon: "💳" },
@@ -22,6 +24,7 @@ export default function CheckoutPage() {
   const location = useLocation();
   const { session } = useSession();
   const { cartItems, subtotal, clearCart } = useCart();
+  const toast = useToast();
 
   // Retrieve cart items from route location state or cart context
   const items = location.state?.cartItems || cartItems;
@@ -86,11 +89,13 @@ export default function CheckoutPage() {
 
       setLastCreatedClaim(primaryClaim);
       setPaymentStatus("SUCCESS");
+      toast.success("Order Placed Successfully! 📦", `Token ${primaryClaim?.token || '#FS'} confirmed. Ready for pickup at ${restaurantName}.`);
       clearCart();
     } catch (err) {
       console.error("Payment authorization error:", err);
       setErrorMessage(err.message || "Payment authorization failed. Please check payment credentials.");
       setPaymentStatus("FAILED");
+      toast.error("Payment Failed", err.message || "Payment authorization failed.");
     }
   }
 

@@ -54,23 +54,23 @@ function IndexRoute({ searchQuery, city, openAuth }) {
 }
 
 import ForcePasswordResetModal from "./components/ForcePasswordResetModal.jsx";
+import { ToastProvider, useToast } from "./components/ToastProvider.jsx";
 
 function Shell() {
   const { session, setSession } = useSession();
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState("login");
-  const [toast, setToast] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [city, setCity] = useState("Kovilpatti");
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
 
   const handlePasswordChanged = () => {
     if (session) {
       setSession({ ...session, mustChangePassword: false, must_change_password: false });
     }
-    setToast("Password updated successfully!");
-    setTimeout(() => setToast(""), 3000);
+    toast.success("Password Updated Successfully! 🔐", "Your password has been changed.");
   };
 
   const openAuth = (mode) => {
@@ -82,7 +82,7 @@ function Shell() {
   const handleAuthenticate = (user) => {
     const role = user.role || "customer";
     setSession({ ...user, role });
-    setToast("Welcome to Food Saver! 🎉");
+    toast.success("Welcome to Food Saver! 🎉", `Logged in as ${user.name || user.username || role}`);
     setAuthOpen(false);
 
     const destination =
@@ -95,7 +95,6 @@ function Shell() {
             : "/customer";
 
     navigate(destination);
-    window.setTimeout(() => setToast(""), 3200);
   };
 
   return (
@@ -266,11 +265,6 @@ function Shell() {
         user={session}
         onPasswordChanged={handlePasswordChanged}
       />
-      {toast ? (
-        <div className="toast-stack">
-          <div className="toast">{toast}</div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -281,7 +275,9 @@ export default function App() {
       <LanguageProvider>
         <SessionProvider>
           <CartProvider>
-            <Shell />
+            <ToastProvider>
+              <Shell />
+            </ToastProvider>
           </CartProvider>
         </SessionProvider>
       </LanguageProvider>

@@ -1,0 +1,66 @@
+services:
+  # MySQL 8.0 Database Service
+  db:
+    image: mysql:8.0
+    container_name: foodsaver-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: foodsaver
+      MYSQL_USER: foodsaver_user
+      MYSQL_PASSWORD: foodsaver_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database_backup/foodsaver_backup_precleanup.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - foodsaver-network
+
+  # Published FoodSaver Backend Image from Docker Hub
+  backend:
+    image: brighttonm/foodsaver-backend:latest
+    container_name: foodsaver-backend
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: foodsaver
+      JWT_SECRET: foodsaver_super_secret_jwt_key_2026
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - foodsaver-network
+
+  # Published FoodSaver Frontend Image from Docker Hub
+  frontend:
+    image: brighttonm/foodsaver-frontend:latest
+    container_name: foodsaver-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - foodsaver-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  foodsaver-network:
+    driver: bridge

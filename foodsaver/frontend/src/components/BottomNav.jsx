@@ -1,28 +1,30 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { useSession } from "../lib/session.jsx";
+import { useTranslation } from "../lib/i18n.jsx";
 
 const LINKS = {
   customer: [
-    { to: "/customer", label: "Feed", end: true, icon: "🍽️" },
-    { to: "/customer/nearby-food", label: "Nearby Map", icon: "📍" },
-    { to: "/customer/pickups", label: "My Pickups", icon: "📦" },
+    { to: "/customer", labelKey: "nav.explore", defaultLabel: "Feed", end: true, icon: "🍽️" },
+    { to: "/customer/nearby-food", labelKey: "nav.nearbyFood", defaultLabel: "Nearby Map", icon: "📍" },
+    { to: "/customer/pickups", labelKey: "nav.myPickups", defaultLabel: "My Pickups", icon: "📦" },
   ],
   merchant: [
-    { to: "/merchant", label: "Dashboard", end: true, icon: "💼" },
-    { to: "/merchant/post", label: "Post Food", icon: "➕" },
-    { to: "/merchant/counter", label: "Counter", icon: "🧾" },
-    { to: "/merchant/donations", label: "Donations", icon: "🎁" },
+    { to: "/merchant", labelKey: "nav.dashboard", defaultLabel: "Dashboard", end: true, icon: "💼" },
+    { to: "/merchant/post", labelKey: "nav.postFood", defaultLabel: "Post Food", icon: "➕" },
+    { to: "/merchant/counter", labelKey: "nav.counter", defaultLabel: "Counter", icon: "🧾" },
+    { to: "/merchant/donations", labelKey: "nav.donations", defaultLabel: "Donations", icon: "🎁" },
   ],
   ngo: [
-    { to: "/ngo", label: "Rescue Feed", end: true, icon: "🤝" },
-    { to: "/ngo/donations", label: "Donations", icon: "🎁" },
+    { to: "/ngo", labelKey: "ngo.dashboard", defaultLabel: "Rescue Feed", end: true, icon: "🤝" },
+    { to: "/ngo/donations", labelKey: "nav.donations", defaultLabel: "Donations", icon: "🎁" },
   ],
-  admin: [{ to: "/admin", label: "Admin Console", end: true, icon: "🛡️" }],
+  admin: [{ to: "/admin", labelKey: "nav.admin", defaultLabel: "Admin Console", end: true, icon: "🛡️" }],
 };
 
 export default function BottomNav() {
   const { session } = useSession();
+  const { t } = useTranslation();
   if (!session) return null;
   const roleKey = (session.role || "").toLowerCase();
   const links = LINKS[roleKey] || [];
@@ -41,7 +43,7 @@ export default function BottomNav() {
             <span className="icon" aria-hidden>
               {link.icon}
             </span>
-            <span className="label">{link.label}</span>
+            <span className="label">{t(link.labelKey) || link.defaultLabel}</span>
           </NavLink>
         ))}
       </div>

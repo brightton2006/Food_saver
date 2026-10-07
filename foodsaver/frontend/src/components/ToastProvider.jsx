@@ -51,6 +51,41 @@ const TYPE_CONFIG = {
   },
 };
 
+function playChime(type) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    const now = ctx.currentTime;
+    osc.type = "sine";
+
+    if (type === "error") {
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(160, now + 0.2);
+    } else if (type === "deal" || type === "ready") {
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+    } else {
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.12);
+      osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.22);
+    }
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  } catch (e) {
+    // Ignore autoplay restriction
+  }
+}
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const { session } = useSession();
@@ -65,6 +100,7 @@ export function ToastProvider({ children }) {
       const newToast = { id, title, message, type, duration };
 
       setToasts((prev) => [...prev.slice(-4), newToast]); // Keep maximum 5 active toasts
+      playChime(type);
 
       if (duration > 0) {
         setTimeout(() => {
@@ -98,6 +134,12 @@ export function ToastProvider({ children }) {
     addToast({ title, message, type: "error", duration });
   toast.info = (title, message = "", duration = 4000) =>
     addToast({ title, message, type: "info", duration });
+  toast.demo = () => {
+    toast.success("Task Complete! 🎉", "Order #FS94821 placed & token generated.");
+    setTimeout(() => toast.ready("Order Ready for Pickup! 📦", "Sunrise Bakery marked your meal ready."), 700);
+    setTimeout(() => toast.deal("New Surplus Deal! 🔥", "Flaky Parotta at Hotel Annapoorna (50% OFF)"), 1400);
+    setTimeout(() => toast.info("Food Rescued by NGO 🚚", "5kg surplus meals collected for community drive."), 2100);
+  };
 
   // Socket.IO Live Realtime Toast Notifications
   useEffect(() => {

@@ -3,9 +3,11 @@ import { useSession } from "../lib/session.jsx";
 import { api } from "../lib/api.js";
 import { socket } from "../lib/socket.js";
 import PickupVerificationModal from "../components/PickupVerificationModal.jsx";
+import { useToast } from "../components/ToastProvider.jsx";
 
 export default function MerchantCounter() {
   const { session } = useSession();
+  const toast = useToast();
   const [tokenInput, setTokenInput] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState(null); // { success, order, errorType, message }
@@ -128,6 +130,7 @@ export default function MerchantCounter() {
           order: res.order,
           message: res.message || "✓ Pickup Verified: Customer verified successfully.",
         });
+        toast.success("Pickup Token Verified! ✅", `Token ${clean} verified. Handover ready.`);
         loadQueue();
       } else {
         setVerificationResult({
@@ -135,28 +138,22 @@ export default function MerchantCounter() {
           errorType: "INVALID",
           message: "Invalid Pickup Token",
         });
+        toast.error("Verification Failed", "Invalid Pickup Token");
       }
     } catch (err) {
       const errMsg = err.message || "";
+      let msg = "Invalid Pickup Token";
       if (errMsg.toLowerCase().includes("already been used") || err.status === 409) {
-        setVerificationResult({
-          success: false,
-          errorType: "ALREADY_USED",
-          message: "This pickup token has already been used.",
-        });
+        msg = "This pickup token has already been used.";
       } else if (errMsg.toLowerCase().includes("another merchant") || err.status === 403) {
-        setVerificationResult({
-          success: false,
-          errorType: "FORBIDDEN",
-          message: "This pickup token belongs to another merchant.",
-        });
-      } else {
-        setVerificationResult({
-          success: false,
-          errorType: "INVALID",
-          message: "Invalid Pickup Token",
-        });
+        msg = "This pickup token belongs to another merchant.";
       }
+      setVerificationResult({
+        success: false,
+        errorType: "INVALID",
+        message: msg,
+      });
+      toast.error("Token Error", msg);
     } finally {
       setVerifying(false);
     }
@@ -170,10 +167,11 @@ export default function MerchantCounter() {
       if (res && (res.completed || res.ok)) {
         setVerificationResult(null);
         setTokenInput("");
+        toast.ready("Order Handed Over! 🛍️", "Customer pickup completed successfully.");
         loadQueue();
       }
     } catch (err) {
-      alert(`Cannot complete order: ${err.message}`);
+      toast.error("Handover Failed", err.message);
     } finally {
       setCompletingId(null);
     }
@@ -184,9 +182,10 @@ export default function MerchantCounter() {
     try {
       const data = await api.rerouteToNgo(tok);
       setQueue((prev) => prev.map((c) => (c.token === tok ? data.claim : c)));
+      toast.info("Rerouted to NGO 🚚", "Surplus package dispatched for rescue.");
       loadQueue();
     } catch (err) {
-      alert(err.message || "Reroute failed");
+      toast.error("Reroute Failed", err.message);
     }
   };
 

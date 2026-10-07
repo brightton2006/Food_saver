@@ -1,9 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../lib/cart.jsx";
+import { useTranslation } from "../lib/i18n.jsx";
 import { getFoodFallbackImage } from "../lib/foodImageService.js";
 
 export default function CartDrawer() {
+  const { t } = useTranslation();
   const {
     cartItems,
     isCartOpen,
@@ -74,10 +76,10 @@ export default function CartDrawer() {
             <span style={{ fontSize: 22 }}>🛒</span>
             <div>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#ffffff" }}>
-                Your Food Cart
+                {t("cart.title")}
               </h3>
               <span style={{ fontSize: 12.5, color: "#8A9490", display: "block", marginTop: 2 }}>
-                {totalCount} {totalCount === 1 ? "item" : "items"} reserved
+                {totalCount} {totalCount === 1 ? "item" : "items"}
               </span>
             </div>
           </div>
@@ -269,11 +271,11 @@ export default function CartDrawer() {
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5, marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", color: "#cbd5e1" }}>
-                <span>Subtotal</span>
+                <span>{t("cart.subtotal")}</span>
                 <span style={{ fontFamily: "monospace", color: "#ffffff" }}>₹{subtotal.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", color: "#69C7A8", fontWeight: 600 }}>
-                <span>Discount Savings</span>
+                <span>{t("cart.totalSavings")}</span>
                 <span style={{ fontFamily: "monospace" }}>−₹{totalSavings.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", color: "#cbd5e1" }}>
@@ -282,7 +284,7 @@ export default function CartDrawer() {
               </div>
               <div style={{ height: 1, borderTop: "1px dashed rgba(255,255,255,0.18)", margin: "4px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <strong style={{ fontSize: 14.5, textTransform: "uppercase", color: "#ffffff" }}>Total Payable</strong>
+                <strong style={{ fontSize: 14.5, textTransform: "uppercase", color: "#ffffff" }}>{t("cart.total")}</strong>
                 <strong style={{ fontSize: 24, color: "#FF9F68", fontFamily: "monospace", fontWeight: 900 }}>
                   ₹{totalPayable.toFixed(2)}
                 </strong>
@@ -306,7 +308,7 @@ export default function CartDrawer() {
                 }}
                 title="Clear all items in cart"
               >
-                🗑️ Clear
+                🗑️ {t("cart.clearCart")}
               </button>
               <button
                 type="button"
@@ -322,7 +324,7 @@ export default function CartDrawer() {
                   boxShadow: "0 4px 16px rgba(245, 158, 11, 0.35)",
                 }}
               >
-                Proceed to Checkout (₹{totalPayable.toFixed(2)}) →
+                {t("cart.checkout")} (₹{totalPayable.toFixed(2)}) →
               </button>
             </div>
           </div>

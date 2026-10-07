@@ -10,6 +10,7 @@ import {
 import { FOOD_CATALOG, ALL_FOOD_ITEMS } from "../lib/foodCatalog.js";
 import PageTransition from "../components/animations/PageTransition.jsx";
 import SuccessAnimation from "../components/animations/SuccessAnimation.jsx";
+import { useToast } from "../components/ToastProvider.jsx";
 
 const CATEGORIES = ["Bakery", "Meals", "Snacks", "Desserts", "Beverages", "Fast Food", "Homemade", "Grocery"];
 
@@ -30,6 +31,7 @@ const initialForm = {
 export default function MerchantPost() {
   const { session } = useSession();
   const navigate = useNavigate();
+  const toast = useToast();
   const [form, setForm] = useState(initialForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -257,6 +259,7 @@ export default function MerchantPost() {
         durationMinutes: Number(form.durationMinutes),
       });
       setPublishedSuccess(true);
+      toast.deal("Surplus Deal Live! 🔥", `${form.itemName} (${form.quantityTotal} available at ₹${form.discountPrice}) is now live on customer feed!`);
       window.setTimeout(() => {
         navigate("/merchant");
       }, 1900);

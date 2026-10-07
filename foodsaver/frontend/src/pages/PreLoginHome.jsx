@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "../lib/session.jsx";
+import { useTranslation } from "../lib/i18n.jsx";
 import { useRealtimeListings } from "../lib/useRealtimeListings.js";
 import ListingCard from "../components/ListingCard.jsx";
 import HotelCard from "../components/HotelCard.jsx";
@@ -41,6 +42,7 @@ const PRE_LOGIN_FILTERS = [
 
 export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kovilpatti" }) {
   const { session } = useSession();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { listings, loading } = useRealtimeListings();
   const [hotels, setHotels] = useState([]);
@@ -222,10 +224,7 @@ export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kov
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight mb-4 leading-tight"
           >
-            Save Great Food. <br className="hidden sm:inline" />
-            <span className="text-[#F5C451]">
-              Waste Less.
-            </span>
+            {t("home.heroTitle")}
           </motion.h1>
 
           {/* User-Requested Supporting Text */}
@@ -235,7 +234,7 @@ export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kov
             transition={{ duration: 0.5, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
             className="text-base sm:text-lg text-[#E8F4F1] max-w-2xl mx-auto mb-8 font-normal leading-relaxed"
           >
-            Saving meals, empowering communities. Discover quality surplus food from nearby food partners at special prices before it goes to waste.
+            {t("home.heroSubtitle")}
           </motion.p>
 
           {/* Two Actions matching button guidelines */}
@@ -246,7 +245,7 @@ export default function PreLoginHome({ onOpenAuth, searchQuery = "", city = "Kov
               onClick={() => navigate("/customer")}
             >
               <span>📍</span>
-              <span>Explore Nearby Food</span>
+              <span>{t("home.exploreSurplus")}</span>
               <span className="text-white text-xs">→</span>
             </button>
 

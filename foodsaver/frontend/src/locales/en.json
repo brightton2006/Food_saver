@@ -17,6 +17,22 @@
     "language": "Language",
     "theme": "Theme"
   },
+  "home": {
+    "heroTitle": "Save Surplus Food from Top Local Restaurants",
+    "heroSubtitle": "Fresh, high-quality surplus meals at 50-70% discount. Order & pickup within 2 km.",
+    "searchPlaceholder": "Search biryani, meals, cakes, restaurants...",
+    "exploreSurplus": "Explore Surplus Offers",
+    "topSurplusPicks": "🔥 Top Surplus Offers Near You",
+    "allRestaurants": "🏪 Partner Restaurants & Bakeries",
+    "noResults": "No matching surplus items found"
+  },
+  "nightSale": {
+    "badge": "FLASH DISCOUNT",
+    "heading": "Midnight Surplus Flash Sale",
+    "subheading": "Up to 70% OFF fresh surplus from local Kovilpatti merchants",
+    "claimNow": "Claim Offer",
+    "endsIn": "Sale Ends In"
+  },
   "auth": {
     "welcome": "Welcome back to FoodSaver",
     "tagline": "Save Good Food, Save Money, Save The Planet",
@@ -49,19 +65,22 @@
     "save": "Save",
     "pickupWindow": "Pickup Window",
     "addToCart": "Add to Cart",
+    "addedToCart": "✓ Added to Cart",
     "claimed": "Sold Out"
   },
   "cart": {
     "title": "Your Food Basket",
     "empty": "Your basket is empty.",
     "subtotal": "Subtotal",
+    "totalSavings": "Total Savings",
     "total": "Total Amount",
     "checkout": "Proceed to Checkout",
     "paymentMethod": "Select Payment Method",
     "upi": "UPI / QR Code",
     "card": "Debit / Credit Card",
     "cash": "Cash on Pickup",
-    "placeOrder": "Place Order & Get Claim Token"
+    "placeOrder": "Place Order & Get Claim Token",
+    "clearCart": "Clear Basket"
   },
   "merchant": {
     "dashboard": "Merchant Control Center",

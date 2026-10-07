@@ -8,6 +8,7 @@ import { socket } from "../lib/socket.js";
 import { api } from "../lib/api.js";
 import NotificationBell from "./NotificationBell.jsx";
 import { Globe, Palette } from "lucide-react";
+import { useToast } from "./ToastProvider.jsx";
 
 const CITIES = ["Kovilpatti", "Chennai", "Madurai", "Coimbatore", "Bangalore", "Trichy"];
 
@@ -171,6 +172,7 @@ export default function Header({
 
   const { themeKey, applyTheme, palettes } = useTheme();
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
+  const toast = useToast();
 
   return (
     <header className="marketplace-header">
@@ -546,6 +548,24 @@ export default function Header({
             title="Contact FoodSaver Support Team"
           >
             ❓ Help
+          </button>
+
+          <button
+            type="button"
+            className="header-nav-link-item"
+            onClick={() => toast?.demo ? toast.demo() : toast("Task Completed Notification!")}
+            title="Trigger Task Completion Notifications in Full Application"
+            style={{
+              background: "rgba(245, 158, 11, 0.12)",
+              color: "#f59e0b",
+              fontWeight: 800,
+              border: "1px solid rgba(245, 158, 11, 0.3)",
+              borderRadius: 10,
+              padding: "5px 10px",
+              fontSize: 12,
+            }}
+          >
+            ⚡ Test Alerts
           </button>
 
           {session && <NotificationBell />}

@@ -4,6 +4,7 @@ import { useSession } from "../lib/session.jsx";
 import { useTranslation, AVAILABLE_LANGUAGES } from "../lib/i18n.jsx";
 import { useTheme } from "../lib/theme.jsx";
 import { api } from "../lib/api.js";
+import { useToast } from "../components/ToastProvider.jsx";
 import {
   ShieldCheck,
   Phone,
@@ -89,6 +90,7 @@ const ACTIVITY_SETS = {
 export default function Profile() {
   const { session, setSession } = useSession();
   const { language, setLanguage, t } = useTranslation();
+  const toast = useToast();
   const {
     themeKey,
     activePalette,
@@ -245,6 +247,7 @@ export default function Profile() {
     setSession(updatedSession);
     setIsEditing(false);
     setSavedSuccess("Profile details updated successfully!");
+    toast.success("Profile Updated! 👤", "Your account details have been saved successfully.");
 
     try {
       await api.updateProfile({
@@ -270,6 +273,7 @@ export default function Profile() {
     const updated = { ...notifPrefs, [key]: !notifPrefs[key] };
     setNotifPrefs(updated);
     setSavedSuccess(t("settings.prefSaved"));
+    toast.info("Preferences Saved ⚙️", "Your notification preferences have been updated.");
     setTimeout(() => setSavedSuccess(""), 3000);
 
     try {
