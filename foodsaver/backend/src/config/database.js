@@ -1,7 +1,8 @@
 require("dotenv").config();
 const mysql = require("mysql2/promise");
 
-const isProduction = process.env.NODE_ENV === "production";
+const isRender = process.env.RENDER === "true" || Boolean(process.env.RENDER_SERVICE_ID);
+const isProduction = process.env.NODE_ENV === "production" || isRender;
 
 // Build database configuration from environment variables or connection string
 function getDbConfig() {
@@ -10,11 +11,20 @@ function getDbConfig() {
     return { uri: dbUrl };
   }
 
-  const host = process.env.DB_HOST || process.env.MYSQL_HOST;
-  if (isProduction && !host) {
-    throw new Error(
-      "Missing required database environment variable: DB_HOST or DATABASE_URL must be configured on Render."
-    );
+  const rawHost = process.env.DB_HOST || process.env.MYSQL_HOST;
+  const host = rawHost ? rawHost.trim() : "";
+
+  if (isProduction || isRender) {
+    if (!host) {
+      throw new Error(
+        "Missing DB_HOST environment variable on Render! Please open Render Dashboard -> Environment -> Add Environment Variable, and set DB_HOST to your remote MySQL server host."
+      );
+    }
+    if (host === "127.0.0.1" || host === "localhost") {
+      throw new Error(
+        `DB_HOST is currently set to "${host}" on Render. Render containers cannot access local MySQL on your personal computer. Please set DB_HOST to your external Cloud MySQL server address in Render Environment Variables.`
+      );
+    }
   }
 
   return {
