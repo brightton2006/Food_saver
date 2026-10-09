@@ -38,16 +38,50 @@ function getDbConfig() {
 
 const config = getDbConfig();
 
+const fs = require("fs");
+const path = require("path");
+
+function getCaCertificate() {
+  const envCa = process.env.DB_SSL_CA || process.env.DB_SSL_CA_PATH;
+  if (envCa) {
+    const trimmed = envCa.trim();
+    if (trimmed.includes("-----BEGIN CERTIFICATE-----")) {
+      return trimmed;
+    }
+    const resolvedPath = path.isAbsolute(trimmed) ? trimmed : path.resolve(process.cwd(), trimmed);
+    if (fs.existsSync(resolvedPath)) {
+      return fs.readFileSync(resolvedPath, "utf8");
+    }
+  }
+
+  const defaultPaths = [
+    path.join(__dirname, "../../ca.pem"),
+    path.join(__dirname, "ca.pem"),
+    path.join(process.cwd(), "ca.pem"),
+  ];
+
+  for (const certPath of defaultPaths) {
+    if (fs.existsSync(certPath)) {
+      return fs.readFileSync(certPath, "utf8");
+    }
+  }
+
+  return undefined;
+}
+
 // SSL configuration for Cloud MySQL providers (Render, Aiven, PlanetScale, Railway, AWS RDS, DigitalOcean, etc.)
 let sslConfig = undefined;
 const enableSSL = process.env.DB_SSL === "true" || (isProduction && process.env.DB_SSL !== "false");
 
 if (enableSSL) {
+  const caCert = getCaCertificate();
   sslConfig = {
-    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === "true",
+    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== undefined
+      ? process.env.DB_SSL_REJECT_UNAUTHORIZED === "true"
+      : Boolean(caCert),
   };
-  if (process.env.DB_SSL_CA) {
-    sslConfig.ca = process.env.DB_SSL_CA;
+  if (caCert) {
+    sslConfig.ca = caCert;
   }
 }
 
