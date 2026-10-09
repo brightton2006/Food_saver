@@ -15,14 +15,9 @@ function getDbConfig() {
   const host = rawHost ? rawHost.trim() : "";
 
   if (isProduction || isRender) {
-    if (!host) {
-      throw new Error(
-        "Missing DB_HOST environment variable on Render! Please open Render Dashboard -> Environment -> Add Environment Variable, and set DB_HOST to your remote MySQL server host."
-      );
-    }
-    if (host === "127.0.0.1" || host === "localhost") {
-      throw new Error(
-        `DB_HOST is currently set to "${host}" on Render. Render containers cannot access local MySQL on your personal computer. Please set DB_HOST to your external Cloud MySQL server address in Render Environment Variables.`
+    if (!host || host === "127.0.0.1" || host === "localhost") {
+      console.warn(
+        `⚠️ WARNING: DB_HOST is currently set to "${host || "empty"}" on Render. Please configure DB_HOST, DB_USER, DB_PASSWORD, DB_NAME in Render Dashboard -> Environment Variables.`
       );
     }
   }
