@@ -728,26 +728,41 @@ async function sendMerchantOnboardingStatusEmail({
 async function sendOtpEmail({ to, name, otp, expiryMinutes = 5 }) {
   const eventId = `otp_${to.toLowerCase()}_${Date.now()}`;
   const html = getBaseTemplate({
-    title: `Your Security Verification Code: ${otp}`,
-    preheader: `Use code ${otp} to verify your FoodSaver account. Expires in ${expiryMinutes} minutes.`,
+    title: `Verify Your Email Address - ${otp}`,
+    preheader: `Use verification code ${otp} to verify your FoodSaver account. Expires in ${expiryMinutes} minutes.`,
     content: `
-      <h2 style="color: #145C52; margin-top: 0;">Account Verification Code 🔒</h2>
-      <p>Hello <strong>${name || "User"}</strong>, you requested a one-time verification code for your FoodSaver account.</p>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <span style="display: inline-block; width: 64px; height: 64px; line-height: 64px; border-radius: 50%; background: #E8F4F1; font-size: 32px;">
+          ✉️
+        </span>
+        <h2 style="color: #145C52; margin: 12px 0 4px; font-size: 24px; font-weight: 800;">Verify Your Email Address</h2>
+        <p style="color: #687674; margin: 0; font-size: 14px;">Thank you for registering with FoodSaver. Please enter the code below to complete email verification.</p>
+      </div>
 
-      <div style="text-align: center; margin: 24px 0;">
-        <div class="token-chip" style="font-size: 28px; padding: 12px 28px;">${otp}</div>
-        <div style="color: #C2410C; font-size: 13px; font-weight: 700; margin-top: 8px;">
-          Expires in ${expiryMinutes} minutes • Never share this code with anyone
+      <p>Hello <strong>${name || "Valued User"}</strong>,</p>
+      <p>Your 6-digit One-Time Password (OTP) for account verification is:</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <div class="token-chip" style="font-size: 34px; padding: 14px 32px; letter-spacing: 8px; font-family: monospace; font-weight: 900; background: #E8F4F1; color: #145C52; border: 2px dashed #145C52;">
+          ${otp}
+        </div>
+        <div style="color: #C2410C; font-size: 13.5px; font-weight: 700; margin-top: 10px;">
+          ⏱️ This code expires in ${expiryMinutes} minutes.
         </div>
       </div>
 
-      <p style="color: #687674; font-size: 13px;">If you did not initiate this request, please change your password immediately or contact <a href="mailto:support@foodsaver.com">support@foodsaver.com</a>.</p>
+      <div class="card-box" style="background: #FFFBEB; border: 1px solid #F59E0B; color: #92400E; border-radius: 12px; padding: 16px;">
+        <strong style="display: block; margin-bottom: 4px; font-size: 14px;">⚠️ Important Security Notice:</strong>
+        <span style="font-size: 13px; line-height: 1.5;">Do not share this OTP code with anyone. FoodSaver representatives will NEVER ask you for your verification code.</span>
+      </div>
+
+      <p style="color: #687674; font-size: 13px; margin-top: 20px;">If you did not attempt to register or sign in to FoodSaver, please ignore this email or contact our support team at <a href="mailto:support@foodsaver.com" style="color: #145C52; font-weight: 600;">support@foodsaver.com</a>.</p>
     `,
   });
 
   return sendMail({
     to,
-    subject: `${otp} is your FoodSaver verification code`,
+    subject: `Verify Your Email Address: ${otp} - FoodSaver`,
     html,
     eventId,
     eventType: "SECURITY_OTP_EMAIL",

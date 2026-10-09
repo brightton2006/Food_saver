@@ -29,12 +29,30 @@ CREATE TABLE IF NOT EXISTS dim_users (
     rejected_at TIMESTAMP NULL,
     approved_by VARCHAR(50) NULL,
     rejected_by VARCHAR(50) NULL,
+    email_verified BOOLEAN DEFAULT FALSE NOT NULL,
+    email_verified_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (role_id) REFERENCES dim_roles(role_id) ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (approved_by) REFERENCES dim_users(user_id) ON DELETE SET NULL,
     FOREIGN KEY (rejected_by) REFERENCES dim_users(user_id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS email_otp_verifications (
+    id VARCHAR(50) PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    user_id VARCHAR(50) NULL,
+    otp_hash VARCHAR(255) NOT NULL,
+    purpose VARCHAR(50) DEFAULT 'EMAIL_VERIFICATION' NOT NULL,
+    attempts INT DEFAULT 0 NOT NULL,
+    max_attempts INT DEFAULT 5 NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    last_sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email_otp (email, is_verified, expires_at)
+);
+
 
 CREATE TABLE IF NOT EXISTS dim_verification_applications (
     application_key INT AUTO_INCREMENT PRIMARY KEY,

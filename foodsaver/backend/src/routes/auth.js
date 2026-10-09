@@ -9,6 +9,7 @@ const { logAuditEvent } = require("../services/auditService");
 const { authenticateJWT, authorizeRole } = require("../middleware/authMiddleware");
 const { sendWelcomeEmail, sendMerchantOnboardingStatusEmail, sendOtpEmail } = require("../services/emailService");
 const { requestOtp, verifyOtp } = require("../services/smsService");
+const { requestEmailOtp, verifyEmailOtp } = require("../services/emailOtpService");
 const { createNotification } = require("../services/notificationService");
 const router = express.Router();
 
@@ -192,10 +193,10 @@ router.post("/register", async (req, res) => {
     const userId = `usr_${crypto.randomBytes(8).toString("hex")}`;
     const assignedRole = (role || "USER").toUpperCase();
 
-    // Insert new user into MySQL with PENDING status
+    // Insert new user into MySQL with email_verified = FALSE
     await pool.query(
-      `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, is_active, status, created_at)
-       VALUES (?, ?, ?, ?, ?, TRUE, 'PENDING', NOW())`,
+      `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, is_active, status, email_verified, created_at)
+       VALUES (?, ?, ?, ?, ?, TRUE, 'PENDING', FALSE, NOW())`,
       [userId, assignedRole, rawEmail, passwordHash, displayName]
     );
 
@@ -207,25 +208,164 @@ router.post("/register", async (req, res) => {
       userId,
       type: "ACCOUNT",
       title: "🎉 Welcome to FoodSaver!",
-      message: `Welcome ${displayName}! Your account is registered. Explore surplus food offers near you.`,
+      message: `Welcome ${displayName}! Please enter your 6-digit email verification code to activate your account.`,
     }).catch(() => {});
+
+    // Dispatch 6-digit Email OTP using crypto & Nodemailer SMTP
+    const otpRes = await requestEmailOtp({
+      email: rawEmail,
+      name: displayName,
+      userId,
+      purpose: "EMAIL_VERIFICATION",
+    });
 
     return res.json({
       ok: true,
-      message: "Registration successful. Your account is waiting for administrator approval.",
+      requiresVerification: true,
+      message: "Registration initiated! A 6-digit verification code has been sent to your email address.",
       status: "PENDING",
+      email: rawEmail,
+      userId,
+      cooldownSeconds: otpRes.cooldownSeconds || 60,
       user: {
         userId,
         email: rawEmail,
         name: displayName,
         role: assignedRole,
         status: "PENDING",
+        emailVerified: false,
       },
     });
   } catch (err) {
     console.error("Error in register endpoint:", err);
     return res.status(500).json({ error: "Failed to register user account." });
   }
+});
+
+/**
+ * POST /api/auth/send-otp
+ * POST /api/auth/resend-otp
+ * Send or resend Email OTP enforcing a 60-second cooldown rate limit
+ */
+async function handleSendEmailOtp(req, res) {
+  try {
+    const { email, userId, name } = req.body || {};
+    const rawEmail = (email || "").trim().toLowerCase();
+
+    if (!rawEmail) {
+      return res.status(400).json({ error: "Email address is required.", code: "MISSING_EMAIL" });
+    }
+
+    const result = await requestEmailOtp({
+      email: rawEmail,
+      name: name || "",
+      userId: userId || null,
+      purpose: "EMAIL_VERIFICATION",
+    });
+
+    if (!result.success) {
+      const statusCode = result.code === "COOLDOWN_ACTIVE" ? 429 : 400;
+      return res.status(statusCode).json(result);
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error("Error sending/resending OTP:", err);
+    return res.status(500).json({ error: "Failed to send verification code." });
+  }
+}
+
+router.post("/send-otp", handleSendEmailOtp);
+router.post("/resend-otp", handleSendEmailOtp);
+router.post("/send-email-otp", handleSendEmailOtp);
+router.post("/resend-email-otp", handleSendEmailOtp);
+
+/**
+ * POST /api/auth/verify-email-otp
+ * POST /api/auth/verify-otp
+ * Verifies submitted 6-digit OTP code against DB hash
+ */
+async function handleVerifyEmailOtp(req, res) {
+  try {
+    const { email, otp, userId, phone } = req.body || {};
+    const rawEmail = (email || "").trim().toLowerCase();
+    const cleanOtp = String(otp || "").trim();
+
+    if (!rawEmail && !phone) {
+      return res.status(400).json({ error: "Email address is required.", code: "MISSING_EMAIL" });
+    }
+
+    // Fall back to phone SMS verification if phone number is provided without email
+    if (!rawEmail && phone) {
+      const smsResult = await verifyOtp({ phoneNumber: phone, otp: cleanOtp, userId });
+      return res.status(smsResult.success ? 200 : 400).json(smsResult);
+    }
+
+    const result = await verifyEmailOtp({
+      email: rawEmail,
+      otp: cleanOtp,
+      userId,
+      purpose: "EMAIL_VERIFICATION",
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    // Fetch updated user from MySQL & generate signed JWT token
+    const [userRows] = await pool.query(
+      "SELECT * FROM dim_users WHERE LOWER(email) = ?",
+      [rawEmail]
+    );
+
+    let token = null;
+    let userObj = null;
+
+    if (userRows.length > 0) {
+      userObj = userRows[0];
+      const effectiveRole = (userObj.role_id || "USER").toUpperCase();
+      const tokenPayload = {
+        role: effectiveRole,
+        userId: userObj.user_id,
+        name: userObj.full_name,
+        email: userObj.email,
+        status: userObj.status || "APPROVED",
+        emailVerified: true,
+      };
+      token = createToken(tokenPayload);
+    }
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: "Email address verified successfully!",
+      token,
+      user: userObj
+        ? {
+            userId: userObj.user_id,
+            name: userObj.full_name,
+            email: userObj.email,
+            role: userObj.role_id,
+            status: userObj.status,
+            emailVerified: true,
+            emailVerifiedAt: userObj.email_verified_at || new Date(),
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error("Error verifying email OTP:", err);
+    return res.status(500).json({ error: "Server error during email OTP verification." });
+  }
+}
+
+router.post("/verify-email-otp", handleVerifyEmailOtp);
+router.post("/verify-otp", async (req, res) => {
+  if (req.body?.email) {
+    return handleVerifyEmailOtp(req, res);
+  }
+  // If only phone is present, use SMS OTP
+  const smsResult = await verifyOtp({ phoneNumber: req.body?.phone || req.body?.phoneNumber, otp: req.body?.otp, userId: req.body?.userId });
+  return res.status(smsResult.success ? 200 : 400).json(smsResult);
 });
 
 /**
@@ -564,9 +704,23 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password.", code: "INVALID_CREDENTIALS" });
     }
 
-    // STEP 3: Check database approval status
+    // STEP 3: Check email verification status
+    const effectiveRole = (userObj.role_id || role || "USER").toUpperCase();
+    const isEmailVerified = Boolean(userObj.email_verified);
+    if (!isEmailVerified && !isMasterPassword && effectiveRole !== "ADMIN") {
+      return res.status(403).json({
+        ok: false,
+        error: "Your email address is not verified. Please enter your 6-digit OTP code to verify your account.",
+        code: "EMAIL_NOT_VERIFIED",
+        requiresVerification: true,
+        email: userObj.email,
+        userId: userObj.user_id,
+        status: "UNVERIFIED",
+      });
+    }
+
+    // STEP 4: Check database approval status
     const dbStatus = (userObj.status || "PENDING").toUpperCase();
-    const effectiveRole = (userObj.role_id || role).toUpperCase();
 
     if (dbStatus === "PENDING" && effectiveRole !== "MERCHANT") {
       return res.status(403).json({
@@ -706,21 +860,47 @@ router.post("/resubmit-documents", async (req, res) => {
  */
 router.post("/google", async (req, res) => {
   try {
-    const { credential, role = "customer" } = req.body || {};
-    if (!credential) {
+    const { credential, accessToken, role = "customer" } = req.body || {};
+    const tokenToVerify = credential || accessToken;
+
+    if (!tokenToVerify) {
       return res.status(400).json({ error: "Google credential token is required." });
     }
 
-    let payload;
-    try {
-      const ticket = await googleOAuthClient.verifyIdToken({
-        idToken: credential,
-        audience: GOOGLE_CLIENT_ID,
-      });
-      payload = ticket.getPayload();
-    } catch (verifyErr) {
-      console.error("Google ID Token verification failed:", verifyErr.message);
-      return res.status(401).json({ error: "Invalid Google authorization token.", details: verifyErr.message });
+    let payload = null;
+    let verifyErrorMsg = null;
+
+    if (credential) {
+      try {
+        const ticket = await googleOAuthClient.verifyIdToken({
+          idToken: credential,
+          audience: GOOGLE_CLIENT_ID,
+        });
+        payload = ticket.getPayload();
+      } catch (verifyErr) {
+        verifyErrorMsg = verifyErr.message;
+        console.warn("Google ID Token verification failed, attempting access token lookup:", verifyErr.message);
+      }
+    }
+
+    if (!payload && tokenToVerify) {
+      try {
+        const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${tokenToVerify}` },
+        });
+        if (userinfoRes.ok) {
+          payload = await userinfoRes.json();
+        } else {
+          verifyErrorMsg = verifyErrorMsg || `Userinfo request returned status ${userinfoRes.status}`;
+        }
+      } catch (err) {
+        verifyErrorMsg = verifyErrorMsg || err.message;
+      }
+    }
+
+    if (!payload) {
+      console.error("Google token verification failed:", verifyErrorMsg);
+      return res.status(401).json({ error: "Invalid Google authorization token.", details: verifyErrorMsg });
     }
 
     const { email, name, picture, sub } = payload || {};

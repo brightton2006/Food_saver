@@ -60,6 +60,19 @@ describe("Authentication & Security Audit Tests", () => {
   });
 
   it("Customer Login & Account Creation: Should create user, authenticate and hash password securely", async () => {
+    // 1. Register user
+    const regRes = await makePost("/api/auth/register", {
+      email: testEmail,
+      password: "SuperSecurePassword123!",
+      name: "Security QA User",
+      role: "customer",
+    });
+    assert.strictEqual(regRes.statusCode, 200);
+
+    // Mark user email_verified = TRUE for test session
+    await pool.query("UPDATE dim_users SET email_verified = TRUE, email_verified_at = NOW(), status = 'APPROVED' WHERE LOWER(email) = ?", [testEmail]);
+
+    // 2. Login user
     const res = await makePost("/api/auth/login", {
       email: testEmail,
       password: "SuperSecurePassword123!",
@@ -67,13 +80,12 @@ describe("Authentication & Security Audit Tests", () => {
       role: "customer",
     });
 
-    console.log("LOGIN RES:", JSON.stringify(res));
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.body.ok, true);
     assert.ok(res.body.token);
 
     // Verify MySQL: Password hash MUST NOT be plaintext
-    const [rows] = await pool.query("SELECT password_hash FROM users WHERE email = ?", [testEmail]);
+    const [rows] = await pool.query("SELECT password_hash FROM dim_users WHERE LOWER(email) = ?", [testEmail]);
     assert.strictEqual(rows.length, 1);
     assert.notStrictEqual(rows[0].password_hash, "SuperSecurePassword123!");
     assert.ok(rows[0].password_hash.startsWith("$2b$") || rows[0].password_hash.startsWith("$2a$"));

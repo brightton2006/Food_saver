@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { useSession } from "../lib/session.jsx";
 import { api } from "../lib/api.js";
+import EmailOtpModal from "../components/EmailOtpModal.jsx";
 
 const ROLE_OPTIONS = [
   { value: "customer", label: "Resident Customer", badge: "Resident" },
@@ -66,6 +67,35 @@ export default function Login() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
+
+  // OTP verification states
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpUserId, setOtpUserId] = useState(null);
+
+  const handleOtpSuccess = (res) => {
+    setOtpModalOpen(false);
+    if (res && res.token) {
+      const effRole = (res.user?.role || role || "CUSTOMER").toUpperCase();
+      const sessionData = {
+        token: res.token,
+        role: effRole,
+        name: res.user?.name || name.trim() || email.split("@")[0],
+        email: res.user?.email || email.trim(),
+        emailVerified: true,
+      };
+      setSession(sessionData);
+      localStorage.setItem("token", res.token);
+
+      if (effRole === "ADMIN") navigate("/admin");
+      else if (effRole === "MERCHANT") navigate("/merchant");
+      else if (effRole === "NGO") navigate("/ngo");
+      else navigate("/customer");
+    } else {
+      setSignupSuccess("Email address verified successfully! You can now log in.");
+      setAuthMode("login");
+    }
+  };
 
   // Document verification onboarding states
   const [mobile, setMobile] = useState("");
@@ -186,8 +216,14 @@ export default function Login() {
             role: role || "user",
           });
 
-          setSignupSuccess(res.message || "Registration successful. Your account is waiting for administrator approval.");
-          setAuthMode("login");
+          if (res && (res.requiresVerification || res.ok)) {
+            setOtpEmail(email.trim());
+            setOtpUserId(res.userId || null);
+            setOtpModalOpen(true);
+          } else {
+            setSignupSuccess(res.message || "Registration successful. Please verify your email.");
+            setAuthMode("login");
+          }
         }
       } else if (role === "merchant") {
         // MERCHANT LOGIN
@@ -281,7 +317,14 @@ export default function Login() {
         else navigate("/customer");
       }
     } catch (err) {
-      setError(err.message || "Authentication failed. Please check credentials.");
+      if (err.code === "EMAIL_NOT_VERIFIED" || err.data?.code === "EMAIL_NOT_VERIFIED" || err.data?.requiresVerification) {
+        setOtpEmail(email.trim());
+        setOtpUserId(err.data?.userId || null);
+        setOtpModalOpen(true);
+        setError("Your email is not verified yet. Please enter the 6-digit OTP sent to your email.");
+      } else {
+        setError(err.message || "Authentication failed. Please check credentials.");
+      }
     } finally {
       setLoading(false);
     }
@@ -363,28 +406,49 @@ export default function Login() {
               scope: "email profile openid",
               prompt: "select_account",
               callback: async (tokenResponse) => {
+                if (tokenResponse?.error) {
+                  setError("Google sign-in was cancelled or encountered an error.");
+                  return;
+                }
                 if (tokenResponse && tokenResponse.access_token) {
                   try {
                     setLoading(true);
-                    const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-                      headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+                    setError(null);
+                    const res = await api.googleLogin({
+                      accessToken: tokenResponse.access_token,
+                      role: role || "customer",
                     });
-                    const profile = await profileRes.json();
-                    const googleUser = {
-                      role: (role || "customer").toUpperCase(),
-                      name: profile.name || "Google User",
-                      hotelName: profile.name || "Google User",
-                      username: (profile.email || "google_user").split("@")[0],
-                      email: profile.email,
-                      picture: profile.picture,
-                    };
-                    setSession(googleUser);
-                    if (role === "customer") navigate("/customer");
-                    else if (role === "merchant") navigate("/merchant");
-                    else if (role === "ngo") navigate("/ngo");
-                    else navigate("/admin");
+
+                    if (res && res.token) {
+                      if (res.requiresOnboarding) {
+                        localStorage.setItem("token", res.token);
+                        if (role === "merchant") navigate("/merchant/onboarding");
+                        else if (role === "ngo") navigate("/ngo/onboarding");
+                        else navigate("/customer");
+                        return;
+                      }
+
+                      const effectiveRole = (res.user?.role || role || "CUSTOMER").toUpperCase();
+                      const sessionData = {
+                        token: res.token,
+                        role: effectiveRole,
+                        name: res.user?.name || "Google User",
+                        hotelName: res.user?.name || "Google User",
+                        username: res.user?.email ? res.user.email.split("@")[0] : "google_user",
+                        email: res.user?.email,
+                        picture: res.user?.picture,
+                      };
+                      setSession(sessionData);
+
+                      if (effectiveRole === "ADMIN") navigate("/admin");
+                      else if (effectiveRole === "MERCHANT") navigate("/merchant");
+                      else if (effectiveRole === "NGO") navigate("/ngo");
+                      else navigate("/customer");
+                    } else {
+                      setError(res?.error || "Google authentication failed.");
+                    }
                   } catch (err) {
-                    setError("Failed to retrieve Google user profile.");
+                    setError(err.message || "Failed to authenticate with Google.");
                   } finally {
                     setLoading(false);
                   }
@@ -1101,6 +1165,15 @@ export default function Login() {
           </div>
         </div>
       )}
+
+      {/* Email OTP Verification Modal */}
+      <EmailOtpModal
+        isOpen={otpModalOpen}
+        email={otpEmail || email}
+        userId={otpUserId}
+        onSuccess={handleOtpSuccess}
+        onClose={() => setOtpModalOpen(false)}
+      />
     </div>
   );
 }

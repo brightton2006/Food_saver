@@ -110,6 +110,14 @@ export const api = {
   deleteNotification: (id, userId) =>
     request(`/api/notifications/${id}`, { method: "DELETE", body: JSON.stringify({ userId }) }),
 
+  // Email OTP Verification
+  sendEmailOtp: (payload) =>
+    request("/api/auth/send-otp", { method: "POST", body: JSON.stringify(payload) }),
+  resendEmailOtp: (payload) =>
+    request("/api/auth/resend-otp", { method: "POST", body: JSON.stringify(payload) }),
+  verifyEmailOtp: (payload) =>
+    request("/api/auth/verify-email-otp", { method: "POST", body: JSON.stringify(payload) }),
+
   // SMS OTP Verification & Preferences
   sendOtp: (payload) =>
     request("/api/auth/send-otp", { method: "POST", body: JSON.stringify(payload) }),

@@ -30,26 +30,45 @@ async function setHotelCredentials() {
     // Fetch all hotels
     const [hotels] = await connection.query("SELECT hotel_id, merchant_user_id, hotel_name, address, contact_number, latitude, longitude FROM dim_hotels");
 
-    const usedEmails = new Map();
+    // Fetch all existing users in dim_users to build email-to-user mapping
+    const [existingUsers] = await connection.query("SELECT user_id, email FROM dim_users");
+    const emailToUserMap = new Map();
+    for (const u of existingUsers) {
+      if (u.email) {
+        emailToUserMap.set(u.email.toLowerCase(), u.user_id);
+      }
+    }
+
+    const assignedEmails = new Set();
     const credentialsList = [];
 
     for (const hotel of hotels) {
       let baseEmail = generateEmail(hotel.hotel_name, hotel.hotel_id);
       let finalEmail = baseEmail;
+      let count = 1;
 
-      // Handle duplicate hotel names by making email unique
-      if (usedEmails.has(baseEmail)) {
-        const count = usedEmails.get(baseEmail) + 1;
-        usedEmails.set(baseEmail, count);
+      let userId = hotel.merchant_user_id || `usr_mkt_${hotel.hotel_id}`;
+
+      // Ensure finalEmail is uniquely available for this userId
+      while (true) {
+        const emailLower = finalEmail.toLowerCase();
+        const isAssignedInLoop = assignedEmails.has(emailLower);
+        const ownerInDb = emailToUserMap.get(emailLower);
+        const isOwnedByOtherInDb = ownerInDb && ownerInDb !== userId;
+
+        if (!isAssignedInLoop && !isOwnedByOtherInDb) {
+          break;
+        }
+
+        count++;
         const namePart = baseEmail.split("@")[0];
         finalEmail = `${namePart}${count}@gmail.com`;
-      } else {
-        usedEmails.set(baseEmail, 1);
       }
 
-      let userId = hotel.merchant_user_id;
+      assignedEmails.add(finalEmail.toLowerCase());
+      emailToUserMap.set(finalEmail.toLowerCase(), userId);
 
-      if (userId) {
+      if (hotel.merchant_user_id) {
         // Update existing user
         await connection.query(
           `UPDATE dim_users 
@@ -59,7 +78,6 @@ async function setHotelCredentials() {
         );
       } else {
         // Create a new merchant user for this hotel
-        userId = `usr_mkt_${hotel.hotel_id}`;
         await connection.query(
           `INSERT INTO dim_users (
             user_id, role_id, email, password_hash, full_name, phone_number,

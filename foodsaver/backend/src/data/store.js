@@ -942,6 +942,24 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
+    // 0. Verify customer email is verified before allowing food purchase
+    if (customerId || customerUsername) {
+      const targetUser = customerId || customerUsername;
+      const [uCheck] = await connection.query(
+        "SELECT email_verified FROM dim_users WHERE user_id = ? OR LOWER(email) = ?",
+        [targetUser, targetUser.toLowerCase()]
+      );
+      if (uCheck.length > 0 && !Boolean(uCheck[0].email_verified)) {
+        await connection.rollback();
+        return {
+          error: "EMAIL_VERIFICATION_REQUIRED",
+          message: "Email verification is required before you can buy food on FoodSaver.",
+          code: "EMAIL_VERIFICATION_REQUIRED",
+          requiresVerification: true,
+        };
+      }
+    }
+
     // 1. SELECT FOR UPDATE to lock row & prevent race conditions
     const [rows] = await connection.query(
       `SELECT l.*, h.hotel_name, u.full_name as merchant_name, u.user_id as merchant_user_id

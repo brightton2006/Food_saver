@@ -272,6 +272,19 @@ async function initializeDatabase() {
       `CREATE OR REPLACE VIEW claims AS SELECT claim_fact_id, claim_id, claim_token, listing_id, listing_fact_id, customer_user_id, customer_user_key, claim_method, quantity, unit_price, price_paid, status, verified_at, verified_by, verification_method, tracking_active, tracking_started_at, tracking_ended_at, last_latitude, last_longitude, last_location_updated_at, date_key, time_key, claimed_at, collected_at, rerouted_at FROM fact_claims`
     );
 
+    // Dynamic Schema Alteration check for email verification on dim_users
+    const [uEmailVerCols] = await connection.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dim_users' AND COLUMN_NAME = 'email_verified'"
+    );
+    if (uEmailVerCols.length === 0) {
+      console.log("🛠️ Migrating dim_users schema to include email_verified & email_verified_at...");
+      await connection.query(`
+        ALTER TABLE dim_users
+        ADD COLUMN email_verified BOOLEAN DEFAULT FALSE NOT NULL,
+        ADD COLUMN email_verified_at TIMESTAMP NULL
+      `);
+    }
+
     // Dynamic Schema Alteration check for communication, multilingual & theme preferences on dim_users
     const [uPrefCols] = await connection.query(
       "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dim_users' AND COLUMN_NAME = 'preferred_language'"
@@ -326,9 +339,27 @@ async function initializeDatabase() {
       )
     `);
 
+    // Dynamic Schema creation for email_otp_verifications table (Email OTP verification)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS email_otp_verifications (
+        id VARCHAR(50) PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        user_id VARCHAR(50) NULL,
+        otp_hash VARCHAR(255) NOT NULL,
+        purpose VARCHAR(50) DEFAULT 'EMAIL_VERIFICATION' NOT NULL,
+        attempts INT DEFAULT 0 NOT NULL,
+        max_attempts INT DEFAULT 5 NOT NULL,
+        is_verified BOOLEAN DEFAULT FALSE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        last_sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email_otp (email, is_verified, expires_at)
+      )
+    `);
+
     // Re-create backward compatibility users VIEW to include new preference and verification columns
     await connection.query(
-      `CREATE OR REPLACE VIEW users AS SELECT user_key, user_id, role_id, email, password_hash, full_name, phone_number, phone_verified, phone_verified_at, preferred_language, preferred_theme, custom_theme_config, notification_preferences, latitude, longitude, location_updated_at, is_active, status, approved_at, rejected_at, approved_by, rejected_by, created_at, updated_at FROM dim_users`
+      `CREATE OR REPLACE VIEW users AS SELECT user_key, user_id, role_id, email, password_hash, full_name, phone_number, phone_verified, phone_verified_at, email_verified, email_verified_at, preferred_language, preferred_theme, custom_theme_config, notification_preferences, latitude, longitude, location_updated_at, is_active, status, approved_at, rejected_at, approved_by, rejected_by, created_at, updated_at FROM dim_users`
     );
 
     console.log("✅ Star Schema database DDL, Views & Live Tracking tables verified successfully");
