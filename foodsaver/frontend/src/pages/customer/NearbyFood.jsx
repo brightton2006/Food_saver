@@ -12,6 +12,7 @@ import LocationPicker from "../../components/LocationPicker.jsx";
 import NearbyStores from "../../components/NearbyStores.jsx";
 import LocationPermissionModal from "../../components/LocationPermissionModal.jsx";
 import PaymentModal from "../../components/PaymentModal.jsx";
+import FloatingCartBar from "../../components/FloatingCartBar.jsx";
 import {
   getCurrentLocation,
   watchUserLocation,
@@ -68,7 +69,7 @@ function CountdownBadge({ initialSeconds = 5079 }) {
 export default function NearbyFood() {
   const navigate = useNavigate();
   const { session } = useSession();
-  const { addItem } = useCart();
+  const { addToCart, totalCount, setIsCartOpen } = useCart();
 
   // Location State (Real Device GPS; initialized to Kovilpatti DEFAULT_COORDINATES for instant rendering)
   const [userLocation, setUserLocation] = useState(DEFAULT_COORDINATES);
@@ -509,6 +510,21 @@ export default function NearbyFood() {
                   🌐 Map Only
                 </button>
               </div>
+
+              {/* View Cart Header Button */}
+              <button
+                type="button"
+                onClick={() => setIsCartOpen(true)}
+                className="relative bg-[#176B5B] hover:bg-[#0D4037] active:scale-95 text-white font-black text-xs px-3.5 py-2 rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0"
+                title="View Shopping Cart"
+              >
+                <span>🛒 Cart</span>
+                {totalCount > 0 && (
+                  <span className="bg-[#FF9F43] text-black font-extrabold text-[11px] px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
+                    {totalCount}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -868,13 +884,13 @@ export default function NearbyFood() {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        addItem(item);
+                                        addToCart(item, 1);
                                         showToast(`Added "${item.foodName || item.itemName}" to cart! 🛍️`);
                                       }}
-                                      className="bg-[#F7FAF9] hover:bg-[#EDF3F1] active:scale-95 text-[#172321] font-semibold text-xs px-3 py-2 rounded-xl border border-[#D8E5E2] transition-all"
+                                      className="bg-[#176B5B]/10 hover:bg-[#176B5B]/20 text-[#176B5B] font-bold text-xs px-3 py-2 rounded-xl border border-[#176B5B]/30 transition-all flex items-center gap-1 active:scale-95"
                                       title="Add item to your cart"
                                     >
-                                      + Cart
+                                      🛒 + Cart
                                     </button>
 
                                     <button
@@ -1006,6 +1022,9 @@ export default function NearbyFood() {
           }}
         />
       )}
+
+      {/* Floating Cart Bar (appears when items are added to cart) */}
+      <FloatingCartBar />
     </div>
   );
 }

@@ -2,7 +2,7 @@ const { pool } = require("../config/database");
 
 async function addNightSaleSpecialToAllHotels() {
   console.log("=================================================");
-  console.log("🌙 ADDING NIGHT SALE SPECIAL FOOD TO ALL HOTELS");
+  console.log("🌙 ADDING 30-DAY NIGHT SALE SPECIAL FOOD TO ALL HOTELS");
   console.log("=================================================\n");
 
   let connection;
@@ -13,17 +13,18 @@ async function addNightSaleSpecialToAllHotels() {
       "SELECT hotel_id, hotel_name, address, latitude, longitude FROM dim_hotels"
     );
 
-    console.log(`Found ${hotels.length} hotels. Adding Midnight Flash Sale Special items...\n`);
+    console.log(`Found ${hotels.length} hotels. Adding 30-day Midnight Flash Sale Special items...\n`);
 
     let totalListingsInserted = 0;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000); // Valid for 12 hours
+    // Valid for 30 days
+    const DAYS_VALID = 30;
+    const expiresAt = new Date(now.getTime() + DAYS_VALID * 24 * 60 * 60 * 1000);
 
     for (let index = 0; index < hotels.length; index++) {
       const hotel = hotels[index];
       const hotelName = (hotel.hotel_name || "").toLowerCase();
 
-      // Determine veg/non-veg and custom details based on hotel type
       const isVegOnly = hotelName.includes("veg") || hotelName.includes("bhavan") || hotelName.includes("saravana") || hotelName.includes("ananda") || hotelName.includes("bakery") || hotelName.includes("sweets");
 
       const menuItemId = `menu_night_special_${hotel.hotel_id}`;
@@ -67,7 +68,7 @@ async function addNightSaleSpecialToAllHotels() {
         ]
       );
 
-      // 2. Insert or Update Active Night Sale Listing
+      // 2. Insert or Update Active 30-Day Night Sale Listing
       const qtyTotal = 12 + (index % 5);
       const qtyAvail = 8 + (index % 4);
 
@@ -82,8 +83,8 @@ async function addNightSaleSpecialToAllHotels() {
         ) VALUES (
           ?, ?, ?, ?, ?, 6, ?,
           ?, ?, ?, ?, ?,
-          ?, ?, ?, '20:00:00', '23:59:00', 'active',
-          FALSE, ?, TRUE, '20:00:00', '23:59:00',
+          ?, ?, ?, '18:00:00', '23:59:00', 'active',
+          FALSE, ?, TRUE, '18:00:00', '23:59:00',
           ?, TRUE, 'Insulated hot counter', 'Prepared fresh this evening',
           TRUE, TRUE
         )
@@ -121,11 +122,11 @@ async function addNightSaleSpecialToAllHotels() {
       );
 
       totalListingsInserted++;
-      console.log(`🌙 [${index + 1}/${hotels.length}] ${hotel.hotel_name}: Added Night Sale Special item ("${itemName}")`);
+      console.log(`🌙 [${index + 1}/${hotels.length}] ${hotel.hotel_name}: Added 30-Day Night Sale Special item ("${itemName}")`);
     }
 
     console.log(`\n=================================================`);
-    console.log(`🎉 SUCCESS! Added Night Sale Special items to all ${hotels.length} hotels.`);
+    console.log(`🎉 SUCCESS! Added 30-day Night Sale Special items to all ${hotels.length} hotels.`);
     console.log(`=================================================\n`);
   } catch (err) {
     console.error("❌ Error adding night sale items:", err);

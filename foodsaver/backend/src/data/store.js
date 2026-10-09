@@ -35,6 +35,19 @@ async function resolveAdminUserId(adminUserId, conn = pool) {
 
 function formatHotelRow(row, menuItems = [], listings = []) {
   if (!row) return null;
+  const verStatus = (row.verification_status || (row.status === "APPROVED" ? "approved" : "pending")).toLowerCase();
+  const isDirectory = Boolean(row.is_directory_listing);
+
+  let partnerStatus = row.partner_status || (verStatus === "approved" ? "verified" : isDirectory ? "unverified" : "pending_approval");
+  let partnerBadge = "FoodSaver Verified Partner";
+  if (partnerStatus === "unverified" || isDirectory) {
+    partnerBadge = "Available Business";
+  } else if (partnerStatus === "pending_approval" || verStatus === "pending") {
+    partnerBadge = "FoodSaver Partner (Pending)";
+  } else {
+    partnerBadge = "FoodSaver Verified Partner";
+  }
+
   return {
     id: row.hotel_id,
     merchantId: row.merchant_user_id || row.hotel_id,
@@ -44,15 +57,25 @@ function formatHotelRow(row, menuItems = [], listings = []) {
     description: row.description || "",
     address: row.address || "",
     location: row.location_city || "Kovilpatti",
+    city: row.location_city || "Kovilpatti",
+    district: row.district || "Thoothukudi",
+    pincode: row.pincode || "628501",
     contactNumber: row.contact_number || "",
     cuisine: row.cuisine || "South Indian • Bakery",
-    openingHours: row.opening_hours || "11:00 - 22:30",
+    openingHours: row.opening_hours || "07:00 - 23:00",
     rating: Number(row.rating || 4.5),
     deliveryTime: row.delivery_time_text || "10–15 mins",
     logo: row.logo_url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80",
     coverImage: row.cover_image_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
     status: (row.status || row.verification_status || "pending").toUpperCase(),
-    verificationStatus: (row.verification_status || (row.status === "APPROVED" ? "approved" : "pending")).toLowerCase(),
+    verificationStatus: verStatus,
+    partnerStatus,
+    partnerBadge,
+    isDirectoryListing: isDirectory,
+    locationStatus: row.location_status || "verified",
+    claimStatus: row.claim_status || "none",
+    lat: Number(row.latitude || 9.1724),
+    lng: Number(row.longitude || 77.8694),
     rejectionReason: row.rejection_reason || "",
     createdAt: new Date(row.created_at || Date.now()).getTime(),
     updatedAt: new Date(row.updated_at || Date.now()).getTime(),
@@ -277,6 +300,84 @@ async function markAllAdminNotificationsRead() {
   return true;
 }
 
+// Helper to auto-seed 30-day food listings for new hotels on both normal and night sale pages
+async function seed30DayFoodForHotel(hotelId, hotelName, conn = pool) {
+  try {
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 Days
+    const sampleItems = [
+      {
+        name: `${hotelName || 'Hotel'} Special Thali Combo`,
+        desc: "Complete daily fresh meal box with rice, curries, appalam & dessert.",
+        orig: 160,
+        disc: 80,
+        isVeg: true,
+        img: "https://images.unsplash.com/photo-1610192244261-3f33de3f55e4?auto=format&fit=crop&w=800&q=80",
+        isNight: false,
+      },
+      {
+        name: `${hotelName || 'Hotel'} Signature Special Feast`,
+        desc: "Chef's special dish prepared fresh today.",
+        orig: 240,
+        disc: 120,
+        isVeg: false,
+        img: "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=800&q=80",
+        isNight: false,
+      },
+      {
+        name: `Midnight Super Saver Combo (70% OFF)`,
+        desc: "Exclusive late-night flash sale feast box.",
+        orig: 280,
+        disc: 84,
+        isVeg: true,
+        img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+        isNight: true,
+      },
+    ];
+
+    for (let i = 0; i < sampleItems.length; i++) {
+      const item = sampleItems[i];
+      const menuItemId = `menu_${hotelId}_${i + 1}`;
+      const listingId = `lst_${hotelId}_${i + 1}`;
+
+      await conn.query(
+        `INSERT INTO dim_menu_items (
+          menu_item_id, hotel_id, item_name, description, original_price, discount_price, is_veg, image_url, rating
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 4.8)
+        ON DUPLICATE KEY UPDATE item_name = VALUES(item_name)`,
+        [menuItemId, hotelId, item.name, item.desc, item.orig, item.disc, item.isVeg, item.img]
+      );
+
+      await conn.query(
+        `INSERT INTO fact_listings (
+          listing_id, hotel_id, menu_item_id, item_name, description, category_id, is_veg,
+          original_price, discount_price, quantity_total, quantity_available, address,
+          latitude, longitude, image_url, pickup_window_start, pickup_window_end, status,
+          notified_ngo, expires_at, is_night_sale, sale_window_start, sale_window_end,
+          collection_deadline, delivery_supported, safe_storage_info, food_prep_time,
+          food_safety_approved, eligible_for_ngo
+        ) VALUES (
+          ?, ?, ?, ?, ?, 6, ?,
+          ?, ?, 10, 10, 'Main Store Counter',
+          9.1724, 77.8694, ?, '09:00:00', '23:59:00', 'active',
+          FALSE, ?, ?, '17:00:00', '23:59:00',
+          ?, TRUE, 'Temperature-controlled counter', 'Fresh daily surplus',
+          TRUE, TRUE
+        )
+        ON DUPLICATE KEY UPDATE
+          status = 'active',
+          expires_at = VALUES(expires_at),
+          collection_deadline = VALUES(collection_deadline)`,
+        [
+          listingId, hotelId, menuItemId, item.name, item.desc, item.isVeg,
+          item.orig, item.disc, item.img, expiresAt, item.isNight, expiresAt
+        ]
+      );
+    }
+  } catch (err) {
+    console.warn("Auto 30-day food seed note:", err.message);
+  }
+}
+
 // --- HOTELS ---
 
 async function createHotel(payload = {}) {
@@ -365,6 +466,9 @@ async function createHotel(payload = {}) {
        VALUES (?, ?, ?, ?, ?, ?, FALSE)`,
       [notifId, SINGLE_ADMIN.id, targetHotelId, null, "NEW_HOTEL_SUBMITTED", notifMessage]
     );
+
+    // Auto seed 30 days food listings (both normal & night sale) for new hotel
+    await seed30DayFoodForHotel(targetHotelId, payload.hotelName || rawMerchantName, connection);
 
     await connection.commit();
 

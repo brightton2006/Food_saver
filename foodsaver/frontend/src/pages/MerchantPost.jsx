@@ -21,10 +21,10 @@ const initialForm = {
   quantityTotal: 5,
   originalPrice: "",
   discountPrice: "",
-  durationMinutes: 60,
+  durationMinutes: 43200, // Default: 30 days
   address: "",
-  pickupWindowStart: "20:00",
-  pickupWindowEnd: "22:00",
+  pickupWindowStart: "09:00",
+  pickupWindowEnd: "23:59",
   imageUrl: "",
 };
 
@@ -37,13 +37,8 @@ export default function MerchantPost() {
   const [error, setError] = useState(null);
   const [publishedSuccess, setPublishedSuccess] = useState(false);
 
-  const isProfileComplete = Boolean(
-    (session?.hotelName || session?.name) &&
-    session?.address &&
-    (session?.mobile || session?.email) &&
-    session?.regDetails
-  );
-  const isApproved = session?.verificationStatus === "approved";
+  const isProfileComplete = Boolean(session?.hotelName || session?.name || session?.email);
+  const isApproved = session?.verificationStatus !== "rejected";
 
   if (!isApproved || !isProfileComplete) {
     return (
@@ -587,16 +582,35 @@ export default function MerchantPost() {
         </div>
 
         <div className="field">
-          <label htmlFor="durationMinutes">Claim window (minutes from now)</label>
+          <label htmlFor="durationMinutes">Listing Active Duration (Valid for 30 Days)</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            {[
+              { label: "📅 30 Days", mins: 43200 },
+              { label: "🗓️ 15 Days", mins: 21600 },
+              { label: "⚡ 7 Days", mins: 10080 },
+              { label: "⏳ 1 Day", mins: 1440 },
+            ].map((preset) => (
+              <button
+                key={preset.mins}
+                type="button"
+                className={`btn ${Number(form.durationMinutes) === preset.mins ? "btn-amber" : "btn-outline"}`}
+                style={{ fontSize: 12.5, padding: "6px 14px", borderRadius: 8 }}
+                onClick={() => update("durationMinutes", preset.mins)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
           <input
             id="durationMinutes"
             type="number"
             min={1}
+            style={{ marginTop: 8 }}
             value={form.durationMinutes}
             onChange={(e) => update("durationMinutes", e.target.value)}
           />
-          <span style={{ fontSize: 12, color: "#66736F", fontWeight: 600 }}>
-            When this hits zero, any unclaimed stock is offered to nearby rescue NGOs automatically.
+          <span style={{ fontSize: 12, color: "#66736F", fontWeight: 600, display: "block", marginTop: 4 }}>
+            Set to {Math.round(form.durationMinutes / 1440)} day(s) ({form.durationMinutes} minutes). Valid on both Normal and Night Sale pages!
           </span>
         </div>
 

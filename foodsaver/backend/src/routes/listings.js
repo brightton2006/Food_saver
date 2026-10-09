@@ -1,5 +1,6 @@
 const express = require("express");
 const store = require("../data/store");
+const locationService = require("../services/locationService");
 const {
   notifyNearbyCustomersForListing,
   notifyNearbyCustomersForNightSale,
@@ -39,9 +40,22 @@ module.exports = function listingsRouter(io) {
     }
   });
 
-  // GET /api/listings/hotels — list all APPROVED merchant hotels for customers
+  // GET /api/listings/hotels — list all APPROVED merchant hotels for customers (location-aware if lat/lng supplied)
   router.get("/hotels", async (req, res) => {
     try {
+      const { lat, lng, latitude, longitude, radius = 5.0 } = req.query;
+      const uLat = parseFloat(lat || latitude);
+      const uLng = parseFloat(lng || longitude);
+
+      if (!isNaN(uLat) && !isNaN(uLng)) {
+        const merchants = await locationService.getNearbyMerchants({
+          lat: uLat,
+          lng: uLng,
+          radiusKm: parseFloat(radius) || 5.0,
+        });
+        return res.json({ hotels: merchants, count: merchants.length });
+      }
+
       const hotels = await store.listHotelsForCustomers();
       res.json({ hotels });
     } catch (err) {
@@ -111,9 +125,25 @@ module.exports = function listingsRouter(io) {
     }
   });
 
-  // GET /api/listings — active flash-sale feed for customers
+  // GET /api/listings — active flash-sale feed for customers (location-aware if lat/lng supplied)
   router.get("/", async (req, res) => {
     try {
+      const { lat, lng, latitude, longitude, radius = 5.0, category = "All", searchQuery = "", sortBy = "distance" } = req.query;
+      const uLat = parseFloat(lat || latitude);
+      const uLng = parseFloat(lng || longitude);
+
+      if (!isNaN(uLat) && !isNaN(uLng)) {
+        const items = await locationService.getNearbyListings({
+          lat: uLat,
+          lng: uLng,
+          radiusKm: parseFloat(radius) || 5.0,
+          category,
+          searchQuery,
+          sortBy,
+        });
+        return res.json({ listings: items });
+      }
+
       const listings = await store.listActiveListings();
       res.json({ listings });
     } catch (err) {

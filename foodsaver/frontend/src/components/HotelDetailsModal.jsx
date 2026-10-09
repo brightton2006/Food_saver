@@ -6,6 +6,29 @@ export default function HotelDetailsModal({ hotel, onClose, onClaimListing }) {
 
   const items = hotel.items || [];
   const activeItems = items.filter((i) => i.status === "active");
+  const menuList = hotel.menu || [];
+
+  const isDirectory = Boolean(hotel.isDirectoryListing || hotel.partnerStatus === "unverified");
+  const isVerified = hotel.partnerStatus === "verified" || hotel.verificationStatus === "approved";
+  const partnerBadgeLabel = isVerified
+    ? "✓ VERIFIED PARTNER"
+    : hotel.partnerStatus === "pending_approval"
+    ? "⏳ REGISTERED (Pending)"
+    : "🏷️ NOT REGISTERED";
+
+  const partnerBadgeColor = isVerified
+    ? "#22c55e"
+    : hotel.partnerStatus === "pending_approval"
+    ? "#f59e0b"
+    : "#94a3b8";
+
+  function handleDirections() {
+    if (hotel.lat && hotel.lng) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${hotel.lat},${hotel.lng}`, "_blank");
+    } else {
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hotel.hotelName + " " + hotel.address)}`, "_blank");
+    }
+  }
 
   return (
     <div
@@ -104,9 +127,12 @@ export default function HotelDetailsModal({ hotel, onClose, onClaimListing }) {
 
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 900, color: "#ffffff" }}>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#ffffff" }}>
                   {hotel.hotelName}
                 </h2>
+                <span style={{ background: partnerBadgeColor, color: "#ffffff", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 800 }}>
+                  {partnerBadgeLabel}
+                </span>
                 <span style={{ background: "#145C52", color: "#F5C451", padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 800 }}>
                   ★ {hotel.rating || 4.5}
                 </span>
@@ -115,9 +141,32 @@ export default function HotelDetailsModal({ hotel, onClose, onClaimListing }) {
                 {hotel.cuisine || "South Indian • Bakery & Meals"}
               </p>
               <p style={{ margin: "2px 0 0", fontSize: 12, color: "#E8F4F1" }}>
-                📍 {hotel.address || "Kovilpatti"} • 🕒 Pickup: {hotel.openingHours || "18:00 - 22:00"}
+                📍 {hotel.address || "Kovilpatti"} • 🕒 Hours: {hotel.openingHours || "07:00 - 22:30"}
               </p>
             </div>
+
+            {/* Directions Action */}
+            <button
+              type="button"
+              onClick={handleDirections}
+              style={{
+                background: "linear-gradient(135deg, #145C52 0%, #0F4C45 100%)",
+                color: "#ffffff",
+                border: "1.5px solid #69C7A8",
+                borderRadius: 12,
+                padding: "8px 14px",
+                fontSize: 12.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                flexShrink: 0,
+              }}
+            >
+              🧭 Get Directions
+            </button>
           </div>
         </div>
 
@@ -126,43 +175,95 @@ export default function HotelDetailsModal({ hotel, onClose, onClaimListing }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, borderBottom: "1px solid #DCE6E3", paddingBottom: 12 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 18, color: "#145C52", fontWeight: 800 }}>
-                Surplus Food Menu
+                Live Surplus Deals
               </h3>
               <span style={{ fontSize: 12.5, color: "#687674" }}>
-                Fresh daily surplus items direct from {hotel.hotelName}
+                {isDirectory
+                  ? "Real Kovilpatti Business — Merchant status: NOT REGISTERED"
+                  : `Active surplus deals direct from ${hotel.hotelName}`}
               </span>
             </div>
-            <span className="badge badge-amber" style={{ fontSize: 12, padding: "4px 12px", background: "rgba(255, 159, 67, 0.15)", color: "#FF9F43", border: "1px solid rgba(255, 159, 67, 0.4)" }}>
-              {activeItems.length} Available {activeItems.length === 1 ? "Offer" : "Offers"}
+            <span
+              className="badge"
+              style={{
+                fontSize: 12,
+                padding: "4px 12px",
+                background: activeItems.length > 0 ? "rgba(34, 197, 94, 0.15)" : "rgba(148, 163, 184, 0.15)",
+                color: activeItems.length > 0 ? "#16a34a" : "#64748b",
+                border: `1px solid ${activeItems.length > 0 ? "#86efac" : "#cbd5e1"}`,
+              }}
+            >
+              {activeItems.length} Active {activeItems.length === 1 ? "Offer" : "Offers"}
             </span>
           </div>
 
           {activeItems.length === 0 ? (
-            <div
-              style={{
-                padding: "40px 24px",
-                textAlign: "center",
-                background: "#FFFFFF",
-                borderRadius: 18,
-                border: "1.5px dashed #DCE6E3",
-              }}
-            >
-              <span style={{ fontSize: 42, display: "block", marginBottom: 8 }}>🍲</span>
-              <h4 style={{ margin: "0 0 6px", fontSize: 18, color: "#102A2A", fontWeight: 800 }}>
-                No Food Available Right Now
-              </h4>
-              <p style={{ margin: "0 auto", fontSize: 13.5, color: "#687674", maxWidth: 420, lineHeight: 1.5 }}>
-                Check back later for fresh surplus food offers from {hotel.hotelName}. Merchants update their end-of-day deals during closing hours.
-              </p>
+            <div>
+              <div
+                style={{
+                  padding: "32px 20px",
+                  textAlign: "center",
+                  background: "#FFFFFF",
+                  borderRadius: 18,
+                  border: "1.5px dashed #DCE6E3",
+                  marginBottom: 20,
+                }}
+              >
+                <span style={{ fontSize: 40, display: "block", marginBottom: 6 }}>🍲</span>
+                <h4 style={{ margin: "0 0 6px", fontSize: 17, color: "#102A2A", fontWeight: 800 }}>
+                  Currently Unavailable
+                </h4>
+                <p style={{ margin: "0 auto", fontSize: 13, color: "#687674", maxWidth: 440, lineHeight: 1.5 }}>
+                  {isDirectory
+                    ? `${hotel.hotelName} is a discovered Kovilpatti business. Once the merchant registers on FoodSaver, active surplus deals will appear here.`
+                    : `No active FoodSaver surplus listings posted by ${hotel.hotelName} right now.`}
+                </p>
+              </div>
+
+              {/* Verified Reference Menu */}
+              {menuList.length > 0 && (
+                <div>
+                  <h4 style={{ margin: "0 0 12px", fontSize: 15, color: "#145C52", fontWeight: 800 }}>
+                    📋 Verified Establishment Menu (Reference)
+                  </h4>
+                  <div className="grid-row cols-2" style={{ gap: 12 }}>
+                    {menuList.map((m, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: "#ffffff",
+                          padding: 14,
+                          borderRadius: 12,
+                          border: "1px solid #e2e8f0",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
+                            {m.isVeg ? "🟢" : "🔴"} {m.itemName || m.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                            {m.description || m.desc || "Fresh dish"}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: "#0f766e" }}>
+                            ₹{m.originalPrice || m.price}
+                          </span>
+                          <span style={{ fontSize: 10, display: "block", color: "#94a3b8" }}>Regular</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid-row cols-2" style={{ gap: 16 }}>
               {activeItems.map((item) => (
-                <ListingCard
-                  key={item.id}
-                  listing={item}
-                  onClaim={() => onClaimListing(item)}
-                />
+                <ListingCard key={item.id} listing={item} onClaim={() => onClaimListing(item)} />
               ))}
             </div>
           )}

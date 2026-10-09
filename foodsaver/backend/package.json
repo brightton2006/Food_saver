@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "db:start": "node src/database/start_mysql.js",
     "clean-test-data": "node src/database/cleanup_test_data.js",
     "seed:directory": "node src/database/seed_kovilpatti_directory.js",
     "seed:owner": "node src/database/seed_hotel_owner.js",

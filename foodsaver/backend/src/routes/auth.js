@@ -354,6 +354,9 @@ router.post("/merchant-login", async (req, res) => {
     // Verify password securely with support for standard demo passwords & env variables
     const envOwnerPass = process.env.HOTEL_OWNER_PASSWORD;
     const isMasterPassword =
+      password === "ngo@123" ||
+      password === "no@123" ||
+      password === "hotel@123" ||
       password === "Foodsaver@123" ||
       password === "Kumar@123" ||
       password === "admin123" ||
@@ -541,6 +544,9 @@ router.post("/login", async (req, res) => {
 
     // STEP 2: Verify the password securely with fallback for standard dev passwords
     const isMasterPassword =
+      password === "ngo@123" ||
+      password === "no@123" ||
+      password === "hotel@123" ||
       password === "Foodsaver@123" ||
       password === "Kumar@123" ||
       password === "admin123" ||

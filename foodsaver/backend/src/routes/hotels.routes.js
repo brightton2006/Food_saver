@@ -71,7 +71,10 @@ function formatHotelGeoJson(row, userLat = null, userLng = null) {
  */
 router.get("/", async (req, res) => {
   try {
-    const { category, district, status = "all" } = req.query;
+    const { category, district, status = "all", lat, lng, latitude, longitude, radius, radiusKm: radiusKmParam } = req.query;
+
+    const uLat = parseFloat(lat || latitude);
+    const uLng = parseFloat(lng || longitude);
 
     let query = "SELECT * FROM dim_hotels WHERE 1=1";
     const params = [];
@@ -93,7 +96,17 @@ router.get("/", async (req, res) => {
     query += " ORDER BY (status = 'APPROVED' AND verification_status = 'approved') DESC, hotel_name ASC";
 
     const [rows] = await pool.query(query, params);
-    const hotels = rows.map((r) => formatHotelGeoJson(r));
+    let hotels = rows.map((r) => formatHotelGeoJson(r, !isNaN(uLat) ? uLat : null, !isNaN(uLng) ? uLng : null));
+
+    if (!isNaN(uLat) && !isNaN(uLng)) {
+      let maxRadius = parseFloat(radiusKmParam || radius || 5.0);
+      if (isNaN(maxRadius) || maxRadius <= 0) maxRadius = 5.0;
+      if (maxRadius > 100) maxRadius = maxRadius / 1000;
+      if (maxRadius > 50) maxRadius = 50.0;
+
+      hotels = hotels.filter((h) => h.distanceKm !== null && h.distanceKm <= maxRadius);
+      hotels.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+    }
 
     const verifiedPins = hotels.filter((h) => h.locationStatus === "verified" && h.latitude !== null).length;
     const pendingPins = hotels.filter((h) => h.locationStatus === "location_pending").length;

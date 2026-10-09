@@ -209,6 +209,55 @@ export default function FoodMap({
     return route;
   }, [route]);
 
+  // Consolidate merchants & hotels derived from foodItems into a single list of map pins
+  const allMapMerchants = React.useMemo(() => {
+    const map = new Map();
+
+    (merchants || []).forEach((m) => {
+      const id = String(m.id || m.hotelId || m.merchantId || m.businessName);
+      if (id && (m.latitude || m.lat) && (m.longitude || m.lng)) {
+        map.set(id, { ...m });
+      }
+    });
+
+    (foodItems || []).forEach((item) => {
+      const hotelId = String(item.hotelId || item.merchantId || item.hotelName);
+      const lat = item.latitude || item.lat;
+      const lng = item.longitude || item.lng;
+
+      if (hotelId && lat && lng) {
+        if (!map.has(hotelId)) {
+          map.set(hotelId, {
+            id: hotelId,
+            hotelId: item.hotelId || hotelId,
+            merchantId: item.merchantId || hotelId,
+            businessName: item.hotelName || item.merchantName || "Hotel Partner",
+            hotelName: item.hotelName || item.merchantName || "Hotel Partner",
+            address: item.address || "Nearby Location",
+            latitude: Number(lat),
+            longitude: Number(lng),
+            lat: Number(lat),
+            lng: Number(lng),
+            cuisine: item.category || "Surplus Food",
+            availableFoodCount: 1,
+            dealsCount: 1,
+            isFoodSaverPartner: true,
+            distance: item.distance || item.distanceKm,
+            distanceText: item.distanceText,
+            rating: item.rating || 4.5,
+          });
+        } else {
+          const existing = map.get(hotelId);
+          existing.availableFoodCount = (existing.availableFoodCount || 0) + 1;
+          existing.dealsCount = (existing.dealsCount || 0) + 1;
+          existing.isFoodSaverPartner = true;
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [merchants, foodItems]);
+
   /**
    * Request real browser GPS location and continuously monitor using watchPosition
    */
@@ -537,7 +586,7 @@ export default function FoodMap({
           )}
 
           {/* 2. Discovered Businesses & FoodSaver Partners */}
-          {merchants.map((merchant) => {
+          {allMapMerchants.map((merchant) => {
             const isSelected =
               selectedMerchant &&
               String(selectedMerchant.id || selectedMerchant.hotelId) ===

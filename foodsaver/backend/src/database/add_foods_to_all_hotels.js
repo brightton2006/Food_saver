@@ -172,7 +172,7 @@ const FOOD_CATALOG = {
 };
 
 function getCategoryPool(hotelName) {
-  const name = hotelName.toLowerCase();
+  const name = (hotelName || "").toLowerCase();
   if (name.includes("biryani") || name.includes("biriyani") || name.includes("bhai") || name.includes("ameer")) {
     return FOOD_CATALOG.biryani;
   }
@@ -187,7 +187,7 @@ function getCategoryPool(hotelName) {
 
 async function addFoodsToAllHotels() {
   console.log("=================================================");
-  console.log("🍱 ADDING SURPLUS FOOD LISTINGS TO ALL HOTELS");
+  console.log("🍱 ADDING 30-DAY SURPLUS FOOD LISTINGS (NORMAL & NIGHT SALE) TO ALL HOTELS");
   console.log("=================================================\n");
 
   let connection;
@@ -198,21 +198,25 @@ async function addFoodsToAllHotels() {
       "SELECT hotel_id, hotel_name, address, latitude, longitude FROM dim_hotels"
     );
 
-    console.log(`Found ${hotels.length} hotels. Inserting surplus food listings...\n`);
+    console.log(`Found ${hotels.length} hotels. Inserting 30-day food listings for normal & night sale pages...\n`);
 
     let totalListingsInserted = 0;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000); // Valid for 12 hours
+    // Valid for 30 days
+    const DAYS_VALID = 30;
+    const expiresAt = new Date(now.getTime() + DAYS_VALID * 24 * 60 * 60 * 1000);
 
     for (let index = 0; index < hotels.length; index++) {
       const hotel = hotels[index];
       const foodItems = getCategoryPool(hotel.hotel_name);
 
-      // Select 2 to 3 items per hotel
       for (let fIdx = 0; fIdx < foodItems.length; fIdx++) {
         const item = foodItems[fIdx];
         const menuItemId = `menu_${hotel.hotel_id}_${fIdx + 1}`;
         const listingId = `lst_${hotel.hotel_id}_${fIdx + 1}`;
+
+        // Alternate items between Normal (isNightSale = false) and Night Sale (isNightSale = true)
+        const isNightSale = fIdx % 2 !== 0;
 
         // 1. Insert Menu Item
         await connection.query(
@@ -238,9 +242,9 @@ async function addFoodsToAllHotels() {
           ]
         );
 
-        // 2. Insert Active Listing
-        const qtyTotal = 10 + (index % 5);
-        const qtyAvail = 6 + (index % 4);
+        // 2. Insert Active 30-Day Listing
+        const qtyTotal = 15 + (index % 5);
+        const qtyAvail = 10 + (index % 4);
 
         await connection.query(
           `INSERT INTO fact_listings (
@@ -253,8 +257,8 @@ async function addFoodsToAllHotels() {
           ) VALUES (
             ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
-            ?, ?, ?, '18:00:00', '23:00:00', 'active',
-            FALSE, ?, TRUE, '17:00:00', '23:30:00',
+            ?, ?, ?, '09:00:00', '23:59:00', 'active',
+            FALSE, ?, ?, '17:00:00', '23:59:00',
             ?, TRUE, 'Temperature-controlled counter', 'Fresh daily surplus',
             TRUE, TRUE
           )
@@ -266,7 +270,9 @@ async function addFoodsToAllHotels() {
             quantity_total = VALUES(quantity_total),
             quantity_available = VALUES(quantity_available),
             status = 'active',
+            is_night_sale = VALUES(is_night_sale),
             expires_at = VALUES(expires_at),
+            collection_deadline = VALUES(collection_deadline),
             latitude = VALUES(latitude),
             longitude = VALUES(longitude)`,
           [
@@ -286,6 +292,7 @@ async function addFoodsToAllHotels() {
             hotel.longitude || 77.8694,
             item.image,
             expiresAt,
+            isNightSale,
             expiresAt,
           ]
         );
@@ -293,11 +300,11 @@ async function addFoodsToAllHotels() {
         totalListingsInserted++;
       }
 
-      console.log(`✅ [${index + 1}/${hotels.length}] ${hotel.hotel_name}: Added ${foodItems.length} surplus food listings.`);
+      console.log(`✅ [${index + 1}/${hotels.length}] ${hotel.hotel_name}: Added ${foodItems.length} food listings (30 Days, Normal & Night Sale).`);
     }
 
     console.log(`\n=================================================`);
-    console.log(`🎉 SUCCESS! Inserted ${totalListingsInserted} active food listings across all ${hotels.length} hotels.`);
+    console.log(`🎉 SUCCESS! Inserted ${totalListingsInserted} active 30-day food listings across all ${hotels.length} hotels.`);
     console.log(`=================================================\n`);
   } catch (err) {
     console.error("❌ Error adding food listings:", err);

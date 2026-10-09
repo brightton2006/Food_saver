@@ -445,6 +445,22 @@ async function initializeDatabase() {
     console.log("✅ Star Schema database initialization completed successfully.");
     const { runMigration } = require("./migrations/v2_production_upgrade");
     await runMigration();
+    const { migrateDirectorySchema } = require("./migrate_directory_schema");
+    await migrateDirectorySchema();
+    const { seedRealKovilpattiBusinesses } = require("./seed_kovilpatti_directory_20");
+    await seedRealKovilpattiBusinesses();
+    const { integrateAllDistrictHotels } = require("./integrate_all_district_hotels");
+    await integrateAllDistrictHotels();
+    const { setHotelCredentials } = require("./set_all_hotel_credentials");
+    await setHotelCredentials();
+    const { addFoodsToAllHotels } = require("./add_foods_to_all_hotels");
+    await addFoodsToAllHotels();
+    const { addNightSaleSpecialToAllHotels } = require("./add_night_sale_special_to_all_hotels");
+    await addNightSaleSpecialToAllHotels();
+    const { completeAndApproveAllHotels } = require("./complete_all_hotel_verifications");
+    await completeAndApproveAllHotels();
+    const { seedAllNgos } = require("./seed_all_ngos");
+    await seedAllNgos();
   } catch (error) {
     console.error("❌ Error initializing Star Schema MySQL database:", error);
     throw error;
