@@ -36,8 +36,8 @@ const io = new Server(server, {
   cors: { origin: "*" },
 });
 
-// Database Health check endpoint
-app.get("/api/health", async (req, res) => {
+// Health check endpoints (/health and /api/health)
+const healthHandler = async (req, res) => {
   try {
     await testConnection();
     res.json({
@@ -48,14 +48,17 @@ app.get("/api/health", async (req, res) => {
       time: Date.now(),
     });
   } catch (err) {
-    res.status(500).json({
+    res.status(503).json({
       success: false,
       server: "ok",
       database: "disconnected",
-      error: err.message,
+      error: err.code || "DATABASE_DISCONNECTED",
     });
   }
-});
+};
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 // Database Test endpoint (Dev verification)
 app.get("/api/test-db", async (req, res) => {

@@ -24,6 +24,11 @@ function checkPort(port = 3306, host = "127.0.0.1") {
 }
 
 async function ensureMySQLRunning() {
+  // Never attempt to start local Windows MySQL server in production or on non-Windows platforms
+  if (process.env.NODE_ENV === "production" || process.platform !== "win32") {
+    return false;
+  }
+
   const isRunning = await checkPort(3306);
   if (isRunning) {
     console.log("✅ MySQL is already running on port 3306.");

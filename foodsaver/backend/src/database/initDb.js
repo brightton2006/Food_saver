@@ -478,20 +478,30 @@ async function initializeDatabase() {
     await runMigration();
     const { migrateDirectorySchema } = require("./migrate_directory_schema");
     await migrateDirectorySchema();
-    const { seedRealKovilpattiBusinesses } = require("./seed_kovilpatti_directory_20");
-    await seedRealKovilpattiBusinesses();
-    const { integrateAllDistrictHotels } = require("./integrate_all_district_hotels");
-    await integrateAllDistrictHotels();
-    const { setHotelCredentials } = require("./set_all_hotel_credentials");
-    await setHotelCredentials();
-    const { addFoodsToAllHotels } = require("./add_foods_to_all_hotels");
-    await addFoodsToAllHotels();
-    const { addNightSaleSpecialToAllHotels } = require("./add_night_sale_special_to_all_hotels");
-    await addNightSaleSpecialToAllHotels();
-    const { completeAndApproveAllHotels } = require("./complete_all_hotel_verifications");
-    await completeAndApproveAllHotels();
-    const { seedAllNgos } = require("./seed_all_ngos");
-    await seedAllNgos();
+
+    // Skip automatic dummy/demo seed scripts in production unless explicitly requested via DB_AUTO_SEED=true
+    const isProduction = process.env.NODE_ENV === "production";
+    const allowSeeding = process.env.DB_AUTO_SEED === "true" || (!isProduction && process.env.DB_AUTO_SEED !== "false");
+
+    if (allowSeeding) {
+      console.log("🌱 Executing initial database seed scripts...");
+      const { seedRealKovilpattiBusinesses } = require("./seed_kovilpatti_directory_20");
+      await seedRealKovilpattiBusinesses();
+      const { integrateAllDistrictHotels } = require("./integrate_all_district_hotels");
+      await integrateAllDistrictHotels();
+      const { setHotelCredentials } = require("./set_all_hotel_credentials");
+      await setHotelCredentials();
+      const { addFoodsToAllHotels } = require("./add_foods_to_all_hotels");
+      await addFoodsToAllHotels();
+      const { addNightSaleSpecialToAllHotels } = require("./add_night_sale_special_to_all_hotels");
+      await addNightSaleSpecialToAllHotels();
+      const { completeAndApproveAllHotels } = require("./complete_all_hotel_verifications");
+      await completeAndApproveAllHotels();
+      const { seedAllNgos } = require("./seed_all_ngos");
+      await seedAllNgos();
+    } else {
+      console.log("ℹ️ Skipping automatic database seed scripts in production environment.");
+    }
   } catch (error) {
     console.error("❌ Error initializing Star Schema MySQL database:", error);
     throw error;
