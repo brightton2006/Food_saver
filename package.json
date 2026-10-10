@@ -8,13 +8,17 @@
     "dev:backend": "cd foodsaver/backend && npm run dev",
     "dev:frontend": "cd foodsaver/frontend && npm run dev",
     "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "start": "npm run dev:all",
+    "start": "cd foodsaver/backend && npm start",
+    "start:backend": "cd foodsaver/backend && npm start",
+    "start:frontend": "cd foodsaver/frontend && npm run preview",
+    "build": "cd foodsaver/frontend && npm install && npm run build && node -e \"const fs=require('fs'); fs.mkdirSync('../../dist', {recursive:true}); fs.cpSync('dist', '../../dist', {recursive:true});\"",
+    "build:frontend": "cd foodsaver/frontend && npm install && npm run build",
     "install:all": "npm run install:backend && npm run install:frontend",
     "install:backend": "cd foodsaver/backend && npm install",
-    "install:frontend": "cd foodsaver/frontend && npm install",
-    "build:frontend": "cd foodsaver/frontend && npm run build"
+    "install:frontend": "cd foodsaver/frontend && npm install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
 }
+

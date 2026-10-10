@@ -376,6 +376,12 @@ async function initializeDatabase() {
       ["merchant", "Hotel and Restaurant Merchant"],
       ["customer", "End Consumer"],
       ["ngo", "Non-Governmental Organization / Food Bank"],
+      ["ADMIN", "Platform Administrator"],
+      ["USER", "Normal User"],
+      ["SHOP_OWNER", "Shop Owner"],
+      ["MERCHANT", "Hotel and Restaurant Merchant"],
+      ["CUSTOMER", "End Consumer"],
+      ["NGO", "Non-Governmental Organization / Food Bank"],
     ];
 
     for (const [roleId, desc] of roles) {
@@ -512,3 +518,14 @@ async function initializeDatabase() {
 
 module.exports = { initializeDatabase };
 
+if (require.main === module) {
+  initializeDatabase()
+    .then(() => {
+      console.log("Database initialized successfully.");
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("Database initialization failed:", err);
+      process.exit(1);
+    });
+}

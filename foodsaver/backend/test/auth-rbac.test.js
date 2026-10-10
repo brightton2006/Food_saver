@@ -51,11 +51,11 @@ describe("Authentication & Security Audit Tests", () => {
     await new Promise((resolve) => {
       testServer = app.listen(API_PORT, resolve);
     });
-    await pool.query("DELETE FROM users WHERE email = ?", [testEmail]);
+    await pool.query("DELETE FROM dim_users WHERE email = ?", [testEmail]);
   });
 
   after(async () => {
-    await pool.query("DELETE FROM users WHERE email = ?", [testEmail]);
+    await pool.query("DELETE FROM dim_users WHERE email = ?", [testEmail]);
     if (testServer) testServer.close();
   });
 

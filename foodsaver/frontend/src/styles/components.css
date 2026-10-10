@@ -3010,6 +3010,85 @@
   }
 }
 
+/* Header Mobile Hamburger & Drawer Styles */
+.header-hamburger-btn {
+  display: none;
+  background: var(--color-primary-light, #E8F4F1);
+  border: 1px solid var(--fs-border, #DCE6E3);
+  color: var(--color-primary, #145C52);
+  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 101;
+  transition: background 0.2s ease;
+}
+
+.header-hamburger-btn:hover {
+  background: rgba(22, 121, 107, 0.2);
+}
+
+@media (max-width: 860px) {
+  .header-hamburger-btn {
+    display: flex;
+  }
+  .desktop-only-item {
+    display: none !important;
+  }
+}
+
+.header-mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  animation: fade-in 0.2s ease;
+}
+
+.header-mobile-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(85vw, 340px);
+  background: var(--color-surface, #ffffff);
+  z-index: 1001;
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: none;
+  background: var(--color-background, #F7F9F8);
+  color: var(--color-text-primary, #102A2A);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.mobile-drawer-item:hover, .mobile-drawer-item:active {
+  background: var(--color-primary-light, #E8F4F1);
+  color: var(--color-primary, #145C52);
+  transform: translateX(3px);
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-wrap: wrap;
@@ -3027,6 +3106,57 @@
   }
   .tab-title {
     font-size: 16px;
+  }
+}
+
+/* Master Mobile Responsive Utility Overrides */
+@media (max-width: 768px) {
+  .table-responsive, .table-container, .data-table-wrap {
+    width: 100%;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    display: block;
+    margin-bottom: 16px;
+  }
+
+  table {
+    min-width: 600px;
+  }
+
+  .auth-modal-panel {
+    width: min(94vw, 420px) !important;
+    padding: 20px 16px !important;
+  }
+
+  /* OTP digit inputs fit on narrow mobile screens (320px–375px) */
+  .otp-input-box, input[name^="otp-"] {
+    width: 38px !important;
+    height: 44px !important;
+    font-size: 18px !important;
+    margin: 0 2px !important;
+  }
+
+  /* Prevent dialogs & cards from exceeding screen boundaries */
+  .card, .dashboard-card, .wizard-card, .modal-content {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Touch Target & Button Sizing */
+  button, .btn, input, select {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 430px) {
+  .app-main {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: calc(var(--nav-h, 76px) + env(safe-area-inset-bottom, 20px) + 16px) !important;
+  }
+
+  .brand-copy span {
+    display: none;
   }
 }
 
@@ -5229,3 +5359,288 @@
 .radar-ping-wave {
   animation: radarWave 2.8s cubic-bezier(0, 0.2, 0.8, 1) infinite;
 }
+
+/* ==========================================================================
+   MASTER RESPONSIVE UI ENGINE (Mobile, Tablet, Laptop, Desktop)
+   Breakpoints: 320px, 376px, 431px, 768px, 1024px, 1440px+
+   ========================================================================== */
+
+/* ---------- A. Small Mobile Devices (320px – 375px) ---------- */
+@media (max-width: 375px) {
+  .marketplace-header {
+    padding: 8px 10px !important;
+  }
+
+  .header-inner {
+    gap: 8px !important;
+  }
+
+  .brand-copy strong {
+    font-size: 15px !important;
+  }
+
+  .brand-copy span {
+    display: none !important;
+  }
+
+  .header-center-bar {
+    padding: 2px 8px !important;
+  }
+
+  .header-search-input {
+    font-size: 12.5px !important;
+  }
+
+  .header-cart-btn {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Food and Hotel card grids - 1 single column */
+  .restaurant-grid-3cols,
+  .restaurant-grid-2cols,
+  .food-deals-grid,
+  .grid-row,
+  .category-grid,
+  .dashboard-metrics-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .food-card-body {
+    padding: 12px !important;
+  }
+
+  .card-row-price-distance {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  /* Forms & Login Panel */
+  .split-login-viewport {
+    padding: 10px 8px !important;
+  }
+
+  .split-right-panel {
+    padding: 20px 12px !important;
+  }
+
+  .split-form-header h2 {
+    font-size: 22px !important;
+  }
+
+  .role-pill-selector {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .role-pill-btn {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+  }
+
+  /* OTP Inputs fit on 320px screens */
+  .otp-input-box, input[name^="otp-"] {
+    width: 34px !important;
+    height: 40px !important;
+    font-size: 16px !important;
+    margin: 0 1px !important;
+  }
+
+  /* Modals fit inside 320px screen */
+  .modal-dialog, .auth-modal-panel, .payment-modal-container, .hotel-modal-container {
+    width: 96vw !important;
+    padding: 16px 12px !important;
+    margin: 8px auto !important;
+  }
+
+  /* Dashboard Tabs Horizontal Scroll */
+  .admin-tab-bar, .merchant-tab-bar, .primary-category-nav, .filter-chips-scroll {
+    display: flex !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 6px !important;
+  }
+}
+
+/* ---------- B. Standard Mobile Devices (376px – 430px) ---------- */
+@media (min-width: 376px) and (max-width: 430px) {
+  .marketplace-header {
+    padding: 10px 12px !important;
+  }
+
+  .restaurant-grid-3cols,
+  .restaurant-grid-2cols,
+  .food-deals-grid,
+  .category-grid,
+  .dashboard-metrics-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .split-right-panel {
+    padding: 24px 16px !important;
+  }
+
+  .modal-dialog, .auth-modal-panel, .payment-modal-container {
+    width: 94vw !important;
+    padding: 20px 16px !important;
+  }
+}
+
+/* ---------- C. Large Mobile & Small Tablets (431px – 767px) ---------- */
+@media (min-width: 431px) and (max-width: 767px) {
+  .restaurant-grid-3cols,
+  .food-deals-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  .split-login-card {
+    grid-template-columns: 1fr !important;
+    max-width: 520px !important;
+  }
+
+  .split-left-panel {
+    min-height: 260px !important;
+    padding: 24px !important;
+  }
+
+  .split-right-panel {
+    padding: 28px 24px !important;
+  }
+
+  .modal-dialog, .auth-modal-panel {
+    width: 90vw !important;
+    padding: 24px 20px !important;
+  }
+}
+
+/* ---------- D. Tablet Viewports (768px – 1023px) ---------- */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .restaurant-grid-3cols,
+  .food-deals-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 18px !important;
+  }
+
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  .split-login-card {
+    grid-template-columns: 1fr 1.2fr !important;
+    max-width: 940px !important;
+    min-height: 640px !important;
+  }
+
+  .split-left-panel {
+    padding: 32px !important;
+  }
+
+  .split-right-panel {
+    padding: 36px 32px !important;
+  }
+}
+
+/* ---------- E. Laptop Viewports (1024px – 1439px) ---------- */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .restaurant-grid-3cols,
+  .food-deals-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 20px !important;
+  }
+
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 20px !important;
+  }
+}
+
+/* ---------- F. Large Desktop Viewports (1440px and above) ---------- */
+@media (min-width: 1440px) {
+  .app-main {
+    max-width: 1360px !important;
+  }
+
+  .header-inner {
+    max-width: 1360px !important;
+  }
+
+  .restaurant-grid-3cols,
+  .food-deals-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 24px !important;
+  }
+
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 24px !important;
+  }
+}
+
+/* ---------- Universal Table Responsiveness ---------- */
+table {
+  width: 100% !important;
+}
+
+@media (max-width: 768px) {
+  .table-responsive, .table-container, .data-table-wrap {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    display: block !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--color-border) !important;
+  }
+
+  table {
+    min-width: 580px !important;
+  }
+
+  th, td {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* ---------- Universal Map & Route Panel Responsiveness ---------- */
+@media (max-width: 768px) {
+  .google-map-canvas, .food-map-container, .leaflet-container {
+    height: 360px !important;
+    border-radius: 16px !important;
+  }
+
+  .route-panel-container, .route-card-overlay {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    margin-top: 14px !important;
+  }
+}
+
+/* ---------- Universal Form Input & Button Accessibility ---------- */
+input, select, textarea, button, .btn {
+  max-width: 100%;
+}
+
+.input-field-wrapper input, .field input, .field select, .field textarea {
+  width: 100% !important;
+}
+
+/* Ensure focus states are clear and visible for accessibility */
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+  outline: 2.5px solid var(--color-primary, #145C52) !important;
+  outline-offset: 2px !important;
+}
+

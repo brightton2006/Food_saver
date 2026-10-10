@@ -64,7 +64,7 @@ async function getNearbyListings({
            ${haversineFormula} AS distance_km
     FROM listings l
     JOIN hotels h ON l.hotel_id = h.hotel_id
-    JOIN users u ON h.merchant_user_id = u.user_id
+    JOIN dim_users u ON h.merchant_user_id = u.user_id
     LEFT JOIN categories c ON l.category_id = c.category_id
     WHERE l.status = 'active' AND l.expires_at > NOW() AND l.quantity_available > 0
   `;
@@ -175,7 +175,7 @@ async function getNearbyMerchants({ lat, lng, radiusKm = 2.0, searchQuery = "", 
            ), 0) AS available_food_count,
            ${haversineFormula} AS distance_km
     FROM hotels h
-    JOIN users u ON h.merchant_user_id = u.user_id
+    JOIN dim_users u ON h.merchant_user_id = u.user_id
     WHERE h.verification_status = 'approved'
       AND u.is_active = TRUE
       AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
@@ -254,7 +254,7 @@ async function getNearbyCustomers({ lat, lng, radiusKm = 2.0 }) {
 
   const [rows] = await pool.query(
     `SELECT user_id, email, full_name, latitude, longitude, ${haversineFormula} AS distance_km
-     FROM users
+     FROM dim_users
      WHERE role_id = 'customer' AND is_active = TRUE
      HAVING distance_km <= ? ORDER BY distance_km ASC`,
     [latitude, longitude, latitude, radius]
@@ -280,7 +280,7 @@ async function getNearbyNgos({ lat, lng, radiusKm = 5.0 }) {
   const [rows] = await pool.query(
     `SELECT n.*, u.email, u.user_id, ${haversineFormula} AS distance_km
      FROM ngos n
-     JOIN users u ON n.ngo_user_id = u.user_id
+     JOIN dim_users u ON n.ngo_user_id = u.user_id
      WHERE n.verification_status = 'approved'
      HAVING distance_km <= ? ORDER BY distance_km ASC`,
     [latitude, longitude, latitude, radius]
@@ -304,7 +304,7 @@ async function saveUserLocation({ userId, lat, lng, accuracy = 10.0 }) {
   const longitude = Number(lng);
 
   await pool.query(
-    `UPDATE users SET latitude = ?, longitude = ?, location_updated_at = NOW() WHERE user_id = ?`,
+    `UPDATE dim_users SET latitude = ?, longitude = ?, location_updated_at = NOW() WHERE user_id = ?`,
     [latitude, longitude, userId]
   );
 
@@ -580,7 +580,7 @@ async function getBusinessDetails(id) {
                 AND l.expires_at > NOW() AND l.quantity_available > 0
             ), 0) AS available_food_count
      FROM hotels h
-     JOIN users u ON h.merchant_user_id = u.user_id
+     JOIN dim_users u ON h.merchant_user_id = u.user_id
      WHERE h.hotel_id = ? OR h.merchant_user_id = ? LIMIT 1`,
     [id, id]
   );

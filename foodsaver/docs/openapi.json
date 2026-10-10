@@ -7,6 +7,10 @@
   },
   "servers": [
     {
+      "url": "https://food-connect-mxcu.onrender.com/api",
+      "description": "Render Deployed Production API Server"
+    },
+    {
       "url": "http://localhost:4000/api",
       "description": "Development API Server"
     }

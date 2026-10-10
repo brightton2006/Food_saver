@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { useSession } from "../lib/session.jsx";
-import { api } from "../lib/api.js";
+import { api, API_BASE } from "../lib/api.js";
 import EmailOtpModal from "../components/EmailOtpModal.jsx";
 
 const ROLE_OPTIONS = [
@@ -143,6 +143,33 @@ export default function Login() {
       }
     }
 
+    const queryError = searchParams.get("error");
+    const queryToken = searchParams.get("token");
+    if (queryError) {
+      setError(decodeURIComponent(queryError));
+    } else if (queryToken) {
+      const effRole = (searchParams.get("role") || "CUSTOMER").toUpperCase();
+      const sessionData = {
+        token: queryToken,
+        role: effRole,
+        name: searchParams.get("name") || "Google User",
+        email: searchParams.get("email") || "",
+      };
+      setSession(sessionData);
+      localStorage.setItem("token", queryToken);
+      if (searchParams.get("requiresOnboarding") === "true") {
+        if (effRole === "MERCHANT") navigate("/merchant/onboarding");
+        else if (effRole === "NGO") navigate("/ngo/onboarding");
+        else navigate("/customer");
+      } else {
+        if (effRole === "ADMIN") navigate("/admin");
+        else if (effRole === "MERCHANT") navigate("/merchant");
+        else if (effRole === "NGO") navigate("/ngo");
+        else navigate("/customer");
+      }
+      return;
+    }
+
     if (routeRole && validRouteRole) {
       setRole(routeRole);
       if (routeRole === "merchant") {
@@ -151,7 +178,7 @@ export default function Login() {
         setDocType("NGO 80G Tax Exemption Certificate");
       }
     }
-  }, [routeRole, validRouteRole, searchParams, location.pathname, navigate]);
+  }, [routeRole, validRouteRole, searchParams, location.pathname, navigate, setSession]);
 
   // Auto rotate left showcase slides every 6 seconds
   useEffect(() => {
@@ -264,7 +291,7 @@ export default function Login() {
         }
       } else if (role === "ngo") {
         // NGO LOGIN
-        const res = await fetch("http://localhost:4000/api/ngo/login", {
+        const res = await fetch(`${API_BASE}/api/ngo/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: email.trim(), password })
@@ -391,89 +418,125 @@ export default function Login() {
 
   const handleGoogleSSO = () => {
     setError(null);
+    setLoading(true);
 
-    const triggerGISPrompt = () => {
-      if (window.google?.accounts?.id) {
+    const authenticateWithToken = async (accessToken, credential) => {
+      try {
+        const res = await api.googleLogin({
+          accessToken,
+          credential,
+          role: role || "customer",
+        });
+
+        if (res && res.token) {
+          if (res.requiresOnboarding) {
+            localStorage.setItem("token", res.token);
+            if (role === "merchant") navigate("/merchant/onboarding");
+            else if (role === "ngo") navigate("/ngo/onboarding");
+            else navigate("/customer");
+            return;
+          }
+
+          const effectiveRole = (res.user?.role || role || "CUSTOMER").toUpperCase();
+          const sessionData = {
+            token: res.token,
+            role: effectiveRole,
+            name: res.user?.name || "Google User",
+            hotelName: res.user?.name || "Google User",
+            username: res.user?.email ? res.user.email.split("@")[0] : "google_user",
+            email: res.user?.email,
+            picture: res.user?.picture,
+          };
+          setSession(sessionData);
+
+          if (effectiveRole === "ADMIN") navigate("/admin");
+          else if (effectiveRole === "MERCHANT") navigate("/merchant");
+          else if (effectiveRole === "NGO") navigate("/ngo");
+          else navigate("/customer");
+        } else {
+          setError(res?.error || "Google authentication failed.");
+        }
+      } catch (err) {
+        setError(err.message || "Failed to authenticate with Google.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const triggerGIS = () => {
+      if (window.google?.accounts?.oauth2) {
+        try {
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: "email profile openid",
+            callback: (tokenResponse) => {
+              if (tokenResponse?.error) {
+                console.warn("Google popup closed or error:", tokenResponse.error);
+                if (tokenResponse.error === "popup_closed_by_user" || tokenResponse.error === "access_denied") {
+                  setError("Google sign-in was cancelled.");
+                } else if (tokenResponse.error === "redirect_uri_mismatch" || tokenResponse.error === "origin_mismatch") {
+                  setError("Google OAuth origin mismatch. Please check Google Cloud Console settings.");
+                } else {
+                  setError(`Google authentication failed (${tokenResponse.error}). Please try again.`);
+                }
+                setLoading(false);
+              } else if (tokenResponse?.access_token) {
+                authenticateWithToken(tokenResponse.access_token, null);
+              } else {
+                setLoading(false);
+              }
+            },
+            error_callback: (err) => {
+              console.warn("Google Identity error:", err);
+              setError("Google Identity Services encountered an error. Please try again.");
+              setLoading(false);
+            },
+          });
+          client.requestAccessToken();
+        } catch (e) {
+          console.warn("OAuth2 init exception:", e);
+          setError("Failed to initialize Google authentication client.");
+          setLoading(false);
+        }
+      } else if (window.google?.accounts?.id) {
         window.google.accounts.id.initialize({
           client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
+          callback: (res) => {
+            if (res?.credential) authenticateWithToken(null, res.credential);
+            else {
+              setError("No authorization token received from Google.");
+              setLoading(false);
+            }
+          },
           auto_select: false,
         });
         window.google.accounts.id.prompt((notification) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            const client = window.google.accounts.oauth2?.initTokenClient({
-              client_id: GOOGLE_CLIENT_ID,
-              scope: "email profile openid",
-              prompt: "select_account",
-              callback: async (tokenResponse) => {
-                if (tokenResponse?.error) {
-                  setError("Google sign-in was cancelled or encountered an error.");
-                  return;
-                }
-                if (tokenResponse && tokenResponse.access_token) {
-                  try {
-                    setLoading(true);
-                    setError(null);
-                    const res = await api.googleLogin({
-                      accessToken: tokenResponse.access_token,
-                      role: role || "customer",
-                    });
-
-                    if (res && res.token) {
-                      if (res.requiresOnboarding) {
-                        localStorage.setItem("token", res.token);
-                        if (role === "merchant") navigate("/merchant/onboarding");
-                        else if (role === "ngo") navigate("/ngo/onboarding");
-                        else navigate("/customer");
-                        return;
-                      }
-
-                      const effectiveRole = (res.user?.role || role || "CUSTOMER").toUpperCase();
-                      const sessionData = {
-                        token: res.token,
-                        role: effectiveRole,
-                        name: res.user?.name || "Google User",
-                        hotelName: res.user?.name || "Google User",
-                        username: res.user?.email ? res.user.email.split("@")[0] : "google_user",
-                        email: res.user?.email,
-                        picture: res.user?.picture,
-                      };
-                      setSession(sessionData);
-
-                      if (effectiveRole === "ADMIN") navigate("/admin");
-                      else if (effectiveRole === "MERCHANT") navigate("/merchant");
-                      else if (effectiveRole === "NGO") navigate("/ngo");
-                      else navigate("/customer");
-                    } else {
-                      setError(res?.error || "Google authentication failed.");
-                    }
-                  } catch (err) {
-                    setError(err.message || "Failed to authenticate with Google.");
-                  } finally {
-                    setLoading(false);
-                  }
-                }
-              },
-            });
-            if (client) client.requestAccessToken();
+            console.warn("Google One-Tap prompt skipped or not displayed.");
+            setLoading(false);
           }
         });
       } else {
-        setError("Google Identity Services is loading. Please try again in a moment.");
+        setError("Google Identity Services script not available. Please refresh the page.");
+        setLoading(false);
       }
     };
 
-    if (!window.google?.accounts?.id) {
+    if (!window.google?.accounts?.id && !window.google?.accounts?.oauth2) {
       const script = document.createElement("script");
       script.id = "google-gsi-script";
       script.src = "https://accounts.google.com/gsi/client";
       script.async = true;
       script.defer = true;
-      script.onload = triggerGISPrompt;
-      script.onerror = () => setError("Failed to load Google Identity Services SDK.");
+      script.onload = triggerGIS;
+      script.onerror = () => {
+        console.warn("GIS script failed to load");
+        setError("Unable to load Google authentication service. Please check your connection.");
+        setLoading(false);
+      };
       document.body.appendChild(script);
     } else {
-      triggerGISPrompt();
+      triggerGIS();
     }
   };
 

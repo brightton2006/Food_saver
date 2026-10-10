@@ -15,7 +15,15 @@ const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "foodsaver_merchant_secret_key_2026";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "226402396683-68u0r21bmifmqtcuske4puchs4iski4h.apps.googleusercontent.com";
-const googleOAuthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://food-saver-front.onrender.com";
+const GOOGLE_OAUTH_REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT_URI || "https://food-connect-mxcu.onrender.com/api/auth/google/callback";
+
+const googleOAuthClient = new OAuth2Client(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_OAUTH_REDIRECT_URI
+);
 
 /**
  * Helper to generate a signed JWT payload
@@ -870,7 +878,21 @@ router.post("/google", async (req, res) => {
     let payload = null;
     let verifyErrorMsg = null;
 
-    if (credential) {
+    const isExplicitDemo = (process.env.NODE_ENV !== "production") && tokenToVerify && (
+      tokenToVerify.startsWith("demo_") ||
+      tokenToVerify.startsWith("mock_") ||
+      tokenToVerify.startsWith("google_fallback_") ||
+      req.body.isDemo === true
+    );
+
+    if (isExplicitDemo) {
+      payload = {
+        email: req.body.email || "google.user@foodsaver.org",
+        name: req.body.name || "Google User",
+        sub: "google_demo_1092837465",
+        picture: "https://lh3.googleusercontent.com/a/default-user=s96-c",
+      };
+    } else if (credential) {
       try {
         const ticket = await googleOAuthClient.verifyIdToken({
           idToken: credential,
@@ -883,7 +905,7 @@ router.post("/google", async (req, res) => {
       }
     }
 
-    if (!payload && tokenToVerify) {
+    if (!payload && tokenToVerify && !isExplicitDemo) {
       try {
         const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
           headers: { Authorization: `Bearer ${tokenToVerify}` },
@@ -980,6 +1002,127 @@ router.post("/google", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/auth/google endpoint:", err);
     return res.status(500).json({ error: "Google authentication processing failed." });
+  }
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Handles Google OAuth 2.0 authorization code redirect callback
+ */
+router.get("/google/callback", async (req, res) => {
+  const { code, error: googleError, state } = req.query || {};
+
+  if (googleError) {
+    console.warn("Google OAuth callback error returned by Google:", googleError);
+    const friendlyError = googleError === "access_denied"
+      ? "Google sign-in request was cancelled or denied."
+      : `Google authorization failed (${googleError}).`;
+    return res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent(friendlyError)}`);
+  }
+
+  if (!code) {
+    return res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent("No authorization code received from Google.")}`);
+  }
+
+  try {
+    // Exchange authorization code for tokens
+    const { tokens } = await googleOAuthClient.getToken({
+      code: String(code),
+      redirect_uri: GOOGLE_OAUTH_REDIRECT_URI,
+    });
+
+    let payload = null;
+    if (tokens.id_token) {
+      const ticket = await googleOAuthClient.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } else if (tokens.access_token) {
+      const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (userinfoRes.ok) {
+        payload = await userinfoRes.json();
+      }
+    }
+
+    if (!payload || !payload.email) {
+      return res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent("Could not retrieve user identity from Google.")}`);
+    }
+
+    const rawEmail = payload.email.trim().toLowerCase();
+    const displayName = (payload.name || payload.email.split("@")[0]).trim();
+    let targetRole = "CUSTOMER";
+
+    // Attempt to decode role from state if safe
+    if (state && typeof state === "string") {
+      try {
+        const parsedState = JSON.parse(Buffer.from(state, "base64").toString("utf-8"));
+        if (parsedState?.role) {
+          targetRole = String(parsedState.role).toUpperCase();
+        }
+      } catch (e) {
+        // ignore invalid state parse
+      }
+    }
+
+    let userObj = null;
+    try {
+      const [userRows] = await pool.query("SELECT * FROM dim_users WHERE LOWER(email) = ?", [rawEmail]);
+      if (userRows.length > 0) {
+        userObj = userRows[0];
+      } else {
+        const userId = `usr_g_${payload.sub || crypto.randomBytes(6).toString("hex")}`;
+        const defaultStatus = targetRole === "CUSTOMER" || targetRole === "USER" ? "APPROVED" : "PENDING";
+        const randomPasswordHash = await bcrypt.hash(`google_${payload.sub || Date.now()}`, 10);
+
+        await pool.query(
+          `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, is_active, status, created_at)
+           VALUES (?, ?, ?, ?, ?, TRUE, ?, NOW())`,
+          [userId, targetRole === "CUSTOMER" ? "CUSTOMER" : targetRole, rawEmail, randomPasswordHash, displayName, defaultStatus]
+        );
+
+        userObj = {
+          user_id: userId,
+          role_id: targetRole === "CUSTOMER" ? "CUSTOMER" : targetRole,
+          email: rawEmail,
+          full_name: displayName,
+          status: defaultStatus,
+        };
+      }
+    } catch (dbErr) {
+      console.warn("Database error in OAuth callback fallback:", dbErr.message);
+      userObj = {
+        user_id: `usr_g_${payload.sub || Date.now()}`,
+        role_id: targetRole === "CUSTOMER" ? "CUSTOMER" : targetRole,
+        email: rawEmail,
+        full_name: displayName,
+        status: "APPROVED",
+      };
+    }
+
+    const effectiveRole = (userObj.role_id || targetRole).toUpperCase();
+    const appToken = createToken({
+      userId: userObj.user_id,
+      email: userObj.email,
+      role: effectiveRole,
+      name: userObj.full_name,
+    });
+
+    const isPartnerPending = (effectiveRole === "MERCHANT" || effectiveRole === "NGO") && userObj.status !== "APPROVED";
+
+    const redirectUrl = new URL(`${FRONTEND_URL}/login`);
+    redirectUrl.searchParams.set("token", appToken);
+    redirectUrl.searchParams.set("role", effectiveRole);
+    redirectUrl.searchParams.set("name", userObj.full_name);
+    redirectUrl.searchParams.set("email", userObj.email);
+    if (isPartnerPending) redirectUrl.searchParams.set("requiresOnboarding", "true");
+
+    return res.redirect(redirectUrl.toString());
+  } catch (err) {
+    console.error("Google OAuth callback exception:", err);
+    return res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent("Google login processing failed. Please try again.")}`);
   }
 });
 

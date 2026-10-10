@@ -1,4 +1,4 @@
-export const API_BASE = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "http://localhost:4000";
+export const API_BASE = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "https://food-connect-mxcu.onrender.com";
 
 async function request(path, options = {}) {
   try {
@@ -46,7 +46,7 @@ async function request(path, options = {}) {
   } catch (err) {
     if (err.name === "TypeError" || err.message?.includes("fetch") || err.message?.includes("NetworkError")) {
       throw new Error(
-        "Unable to connect to the backend server (http://localhost:4000). Please ensure the backend server is running."
+        `Unable to connect to the backend server (${API_BASE}). Please ensure the backend server is running.`
       );
     }
     throw err;

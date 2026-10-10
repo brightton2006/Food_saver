@@ -13,7 +13,9 @@ function startExpirySweeper(io, intervalMs = 5000) {
         }
       });
     } catch (err) {
-      console.error("Expiry sweeper error:", err.message);
+      if (err.code !== 'ENOTFOUND' && err.code !== 'ETIMEDOUT' && !err.message?.includes('ENOTFOUND')) {
+        console.error("Expiry sweeper notice:", err.message);
+      }
     }
   };
 

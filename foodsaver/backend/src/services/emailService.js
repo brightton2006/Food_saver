@@ -8,7 +8,7 @@ const SMTP_SECURE = process.env.SMTP_SECURE === "true" || SMTP_PORT === 465;
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const EMAIL_FROM = process.env.EMAIL_FROM || '"FoodSaver" <no-reply@foodsaver.com>';
-const APP_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const APP_URL = process.env.FRONTEND_URL || "https://food-saver-front.onrender.com";
 
 let transporter = null;
 

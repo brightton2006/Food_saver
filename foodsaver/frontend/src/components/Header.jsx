@@ -172,7 +172,10 @@ export default function Header({
 
   const { themeKey, applyTheme, palettes } = useTheme();
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const toast = useToast();
+
+  const closeMobileNav = () => setMobileNavOpen(false);
 
   return (
     <header className="marketplace-header">
@@ -248,7 +251,7 @@ export default function Header({
         {/* Right: Offers, My Orders, Nearby Map, Language, Theme, Auth & Cart Actions */}
         <div className="header-right">
           {/* Dynamic Theme Quick Switcher */}
-          <div style={{ position: "relative" }}>
+          <div className="desktop-only-item" style={{ position: "relative" }}>
             <button
               type="button"
               className="header-nav-link-item"
@@ -358,7 +361,7 @@ export default function Header({
           </div>
 
           {/* Multilingual Switcher (English, Tamil, Hindi) */}
-          <div style={{ position: "relative" }}>
+          <div className="desktop-only-item" style={{ position: "relative" }}>
             <button
               type="button"
               className="header-nav-link-item"
@@ -466,7 +469,7 @@ export default function Header({
 
           <button
             type="button"
-            className="header-nav-link-item"
+            className="header-nav-link-item desktop-only-item"
             onClick={() => (session ? navigate("/customer") : onOpenAuth("login"))}
           >
             🏷️ Offers
@@ -475,7 +478,7 @@ export default function Header({
           {(!session || session?.role === "customer") && (
             <button
               type="button"
-              className="header-nav-link-item"
+              className="header-nav-link-item desktop-only-item"
               onClick={() => navigate("/customer/nearby-food")}
               title="View 2 km Nearby Food Marketplace Map"
               style={{
@@ -498,7 +501,7 @@ export default function Header({
           {session?.role === "customer" && (
             <button
               type="button"
-              className="header-nav-link-item"
+              className="header-nav-link-item desktop-only-item"
               onClick={() => navigate("/customer/pickups")}
               title="View my claimed food tokens and order tracker"
             >
@@ -510,7 +513,7 @@ export default function Header({
             <>
               <button
                 type="button"
-                className="header-nav-link-item"
+                className="header-nav-link-item desktop-only-item"
                 onClick={() => navigate("/merchant/counter")}
                 title="View All Received Customer Orders & Counter Pickups"
                 style={{ color: "#145C52", fontWeight: 700 }}
@@ -519,7 +522,7 @@ export default function Header({
               </button>
               <button
                 type="button"
-                className="header-nav-link-item"
+                className="header-nav-link-item desktop-only-item"
                 onClick={() => navigate("/merchant/donations")}
                 title="Post Unsold Surplus Food for NGO Pickups"
                 style={{ color: "#16796B", fontWeight: 700 }}
@@ -532,7 +535,7 @@ export default function Header({
           {session?.role === "ngo" && (
             <button
               type="button"
-              className="header-nav-link-item"
+              className="header-nav-link-item desktop-only-item"
               onClick={() => navigate("/ngo/donations")}
               title="Claim Unsold Food Surplus from Merchants within 5 km"
               style={{ color: "#145C52", fontWeight: 700 }}
@@ -543,29 +546,11 @@ export default function Header({
 
           <button
             type="button"
-            className="header-nav-link-item"
+            className="header-nav-link-item desktop-only-item"
             onClick={() => window.open("mailto:support@foodsaver.com?subject=FoodSaver%20Support%20Request", "_blank")}
             title="Contact FoodSaver Support Team"
           >
             ❓ Help
-          </button>
-
-          <button
-            type="button"
-            className="header-nav-link-item"
-            onClick={() => toast?.demo ? toast.demo() : toast("Task Completed Notification!")}
-            title="Trigger Task Completion Notifications in Full Application"
-            style={{
-              background: "rgba(245, 158, 11, 0.12)",
-              color: "#f59e0b",
-              fontWeight: 800,
-              border: "1px solid rgba(245, 158, 11, 0.3)",
-              borderRadius: 10,
-              padding: "5px 10px",
-              fontSize: 12,
-            }}
-          >
-            ⚡ Test Alerts
           </button>
 
           {session && <NotificationBell />}
@@ -576,7 +561,7 @@ export default function Header({
 
           {session ? (
             <button
-              className="header-profile-btn"
+              className="header-profile-btn desktop-only-item"
               type="button"
               title="View Profile & Account Details"
               onClick={() => navigate("/profile")}
@@ -589,7 +574,7 @@ export default function Header({
               </span>
             </button>
           ) : (
-            <div className="auth-actions">
+            <div className="auth-actions desktop-only-item">
               <button
                 className="btn btn-primary nav-auth-btn"
                 type="button"
@@ -632,8 +617,221 @@ export default function Header({
               {totalCount}
             </span>
           </button>
+
+          {/* Mobile Hamburger Toggle Button */}
+          <button
+            type="button"
+            className="header-hamburger-btn"
+            onClick={() => setMobileNavOpen((prev) => !prev)}
+            aria-label="Toggle Navigation Menu"
+            aria-expanded={mobileNavOpen}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {mobileNavOpen ? (
+                <path d="M18 6L6 18M6 6l12 12" />
+              ) : (
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
         </div>
       </div>
+
+      {/* Mobile Navigation Drawer */}
+      {mobileNavOpen && (
+        <>
+          <div className="header-mobile-drawer-backdrop" onClick={closeMobileNav} />
+          <nav className="header-mobile-drawer" aria-label="Mobile Menu">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-border, #DCE6E3)", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <img src="/logo.png" alt="FoodSaver" style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 8 }} />
+                <strong style={{ fontSize: 16, color: "var(--color-primary, #145C52)", fontWeight: 800 }}>FoodSaver Menu</strong>
+              </div>
+              <button
+                type="button"
+                onClick={closeMobileNav}
+                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#687674" }}
+                aria-label="Close Navigation Menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            {session && (
+              <div
+                onClick={() => { closeMobileNav(); navigate("/profile"); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "var(--color-primary-light, #E8F4F1)",
+                  cursor: "pointer",
+                }}
+              >
+                <div className="header-avatar-circle">
+                  {(session.hotelName || session.name)?.slice(0, 1).toUpperCase() || "U"}
+                </div>
+                <div>
+                  <strong style={{ fontSize: 14, color: "var(--color-primary, #145C52)", display: "block" }}>{session.hotelName || session.name}</strong>
+                  <span style={{ fontSize: 11, color: "#687674", textTransform: "capitalize" }}>Role: {session.role}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                type="button"
+                className="mobile-drawer-item"
+                onClick={() => { closeMobileNav(); navigate(session ? "/customer" : "/"); }}
+              >
+                🏷️ Offers & Browse
+              </button>
+
+              {(!session || session?.role === "customer") && (
+                <>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/customer/nearby-food"); }}
+                  >
+                    📍 {t("nav.nearbyFood")} (Nearby Map)
+                  </button>
+                  {session?.role === "customer" && (
+                    <button
+                      type="button"
+                      className="mobile-drawer-item"
+                      onClick={() => { closeMobileNav(); navigate("/customer/pickups"); }}
+                    >
+                      🛍️ {t("nav.myPickups")} (Order Tracker)
+                    </button>
+                  )}
+                </>
+              )}
+
+              {session?.role === "merchant" && (
+                <>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/merchant"); }}
+                  >
+                    💼 Merchant Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/merchant/post"); }}
+                  >
+                    ➕ Post Surplus Food
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/merchant/counter"); }}
+                  >
+                    🧾 {t("merchant.manageOrders")}
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/merchant/donations"); }}
+                  >
+                    🎁 {t("merchant.transferNgo")}
+                  </button>
+                </>
+              )}
+
+              {session?.role === "ngo" && (
+                <>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/ngo"); }}
+                  >
+                    🤝 NGO Rescue Feed
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-drawer-item"
+                    onClick={() => { closeMobileNav(); navigate("/ngo/donations"); }}
+                  >
+                    🎁 {t("ngo.claimDonation")}
+                  </button>
+                </>
+              )}
+
+              {session?.role === "admin" && (
+                <button
+                  type="button"
+                  className="mobile-drawer-item"
+                  onClick={() => { closeMobileNav(); navigate("/admin"); }}
+                >
+                  🛡️ Admin Console & Verification
+                </button>
+              )}
+
+              {session && (
+                <button
+                  type="button"
+                  className="mobile-drawer-item"
+                  onClick={() => { closeMobileNav(); navigate("/profile"); }}
+                >
+                  ⚙️ Account & Settings
+                </button>
+              )}
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--color-border, #DCE6E3)", paddingTop: 12, marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setLanguage("en")}
+                  style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${language === "en" ? "#145C52" : "#DCE6E3"}`, background: language === "en" ? "#E8F4F1" : "#fff", fontWeight: 700, fontSize: 12 }}
+                >
+                  🇬🇧 EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage("ta")}
+                  style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${language === "ta" ? "#145C52" : "#DCE6E3"}`, background: language === "ta" ? "#E8F4F1" : "#fff", fontWeight: 700, fontSize: 12 }}
+                >
+                  🇮🇳 தமிழ்
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage("hi")}
+                  style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${language === "hi" ? "#145C52" : "#DCE6E3"}`, background: language === "hi" ? "#E8F4F1" : "#fff", fontWeight: 700, fontSize: 12 }}
+                >
+                  🇮🇳 हिंदी
+                </button>
+              </div>
+
+              {!session && (
+                <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ flex: 1 }}
+                    type="button"
+                    onClick={() => { closeMobileNav(); onOpenAuth("login"); }}
+                  >
+                    {t("auth.login")}
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    style={{ flex: 1 }}
+                    type="button"
+                    onClick={() => { closeMobileNav(); onOpenAuth("signup"); }}
+                  >
+                    {t("auth.register")}
+                  </button>
+                </div>
+              )}
+            </div>
+          </nav>
+        </>
+      )}
     </header>
   );
 }

@@ -393,7 +393,7 @@ async function createHotel(payload = {}) {
 
     // Ensure merchant user exists
     const [userRows] = await connection.query(
-      "SELECT user_id FROM users WHERE user_id = ? OR email = ? OR full_name = ?",
+      "SELECT user_id FROM dim_users WHERE user_id = ? OR email = ? OR full_name = ?",
       [merchantIdInput, email, rawMerchantName]
     );
 
@@ -1013,14 +1013,14 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
 
     // Ensure customer user exists in users table or search by user_id/email/full_name
     const [cUser] = await connection.query(
-      "SELECT user_id FROM users WHERE user_id = ? OR email = ? OR LOWER(full_name) = ?",
+      "SELECT user_id FROM dim_users WHERE user_id = ? OR email = ? OR LOWER(full_name) = ?",
       [custId, custId, String(custId).toLowerCase()]
     );
     let validCustomerUserId = cUser.length > 0 ? cUser[0].user_id : null;
     if (!validCustomerUserId && custId !== "guest") {
       const newCustId = `usr_${crypto.createHash("md5").update(String(custId).toLowerCase()).digest("hex").slice(0, 8)}`;
       await connection.query(
-        `INSERT INTO users (user_id, role_id, email, password_hash, full_name, is_active)
+        `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, is_active)
          VALUES (?, 'customer', ?, 'placeholder_hash', ?, TRUE)
          ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)`,
         [newCustId, custId.includes("@") ? custId : `${custId}@foodsaver.com`, customerName || custId]
@@ -1507,12 +1507,12 @@ async function createVerificationApplication(payload) {
     await connection.beginTransaction();
 
     const userId = payload.email || generateId("usr");
-    const [uRows] = await connection.query("SELECT user_id FROM users WHERE user_id = ? OR email = ?", [userId, payload.email]);
+    const [uRows] = await connection.query("SELECT user_id FROM dim_users WHERE user_id = ? OR email = ?", [userId, payload.email]);
 
     let actualUserId = userId;
     if (uRows.length === 0) {
       await connection.query(
-        `INSERT INTO users (user_id, role_id, email, password_hash, full_name, phone_number, is_active)
+        `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, phone_number, is_active)
          VALUES (?, ?, ?, 'placeholder_hash', ?, ?, TRUE)`,
         [userId, role, payload.email || `${userId}@foodsaver.com`, applicantName, payload.mobile || null]
       );

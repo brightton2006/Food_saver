@@ -1,0 +1,32 @@
+services:
+  # Frontend Static Site
+  - type: web
+    name: foodsaver-frontend
+    runtime: static
+    buildCommand: npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://food-connect-mxcu.onrender.com
+      - key: VITE_GOOGLE_CLIENT_ID
+        value: 226402396683-68u0r21bmifmqtcuske4puchs4iski4h.apps.googleusercontent.com
+
+  # Backend Web Service
+  - type: web
+    name: foodsaver-backend
+    env: node
+    rootDir: foodsaver/backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://food-saver-front.onrender.com
+      - key: GOOGLE_CLIENT_ID
+        value: 226402396683-68u0r21bmifmqtcuske4puchs4iski4h.apps.googleusercontent.com
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+

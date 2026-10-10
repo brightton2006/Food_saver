@@ -95,6 +95,7 @@ const apiLimiter = rateLimit({
 app.use("/api/", apiLimiter);
 
 app.use("/api/auth", authRouter);
+app.use("/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/merchant", merchantRouter);
 app.use("/api/hotels", hotelsRouter);
