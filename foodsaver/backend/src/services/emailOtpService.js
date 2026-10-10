@@ -2,6 +2,32 @@ const crypto = require("crypto");
 const { pool } = require("../config/database");
 const { sendOtpEmail } = require("./emailService");
 
+let tableChecked = false;
+async function ensureOtpTableExists() {
+  if (tableChecked) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_otp_verifications (
+        id VARCHAR(50) PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        user_id VARCHAR(50) NULL,
+        otp_hash VARCHAR(255) NOT NULL,
+        purpose VARCHAR(50) DEFAULT 'EMAIL_VERIFICATION' NOT NULL,
+        attempts INT DEFAULT 0 NOT NULL,
+        max_attempts INT DEFAULT 5 NOT NULL,
+        is_verified BOOLEAN DEFAULT FALSE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        last_sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email_otp (email, is_verified, expires_at)
+      )
+    `);
+    tableChecked = true;
+  } catch (err) {
+    console.warn("[EmailOtpService] Note: Could not auto-verify email_otp_verifications table:", err.message);
+  }
+}
+
 /**
  * Generates a cryptographically secure 6-digit numeric OTP string
  */
@@ -40,22 +66,33 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
     };
   }
 
+  await ensureOtpTableExists();
   const cleanEmail = email.trim().toLowerCase();
 
   // 1. Check existing active OTP for 60-second resend cooldown
   try {
-    const [existingRows] = await pool.query(
-      `SELECT id, last_sent_at, expires_at, attempts
-       FROM email_otp_verifications
-       WHERE LOWER(email) = ? AND purpose = ?
-       ORDER BY created_at DESC LIMIT 1`,
-      [cleanEmail, purpose]
-    );
+    const targetUserId = userId && String(userId).trim() ? String(userId).trim() : null;
+    let existingRows = [];
+    if (targetUserId) {
+      [existingRows] = await pool.query(
+        `SELECT id, last_sent_at, TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS elapsed_seconds, expires_at, attempts
+         FROM email_otp_verifications
+         WHERE (LOWER(email) = ? OR user_id = ?) AND purpose = ?
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanEmail, targetUserId, purpose]
+      );
+    } else {
+      [existingRows] = await pool.query(
+        `SELECT id, last_sent_at, TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS elapsed_seconds, expires_at, attempts
+         FROM email_otp_verifications
+         WHERE LOWER(email) = ? AND purpose = ?
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanEmail, purpose]
+      );
+    }
 
     if (existingRows.length > 0) {
-      const lastSent = new Date(existingRows[0].last_sent_at).getTime();
-      const now = Date.now();
-      const elapsedSeconds = Math.floor((now - lastSent) / 1000);
+      const elapsedSeconds = Math.abs(Number(existingRows[0].elapsed_seconds) || 0);
       const COOLDOWN_PERIOD = 60; // 60 seconds cooldown
 
       if (elapsedSeconds < COOLDOWN_PERIOD) {
@@ -76,6 +113,13 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
     const id = `em_otp_${crypto.randomBytes(8).toString("hex")}`;
     const EXPIRY_MINUTES = 5;
     const expiresAt = new Date(Date.now() + EXPIRY_MINUTES * 60 * 1000);
+
+    // Print OTP in development console for instant test visibility
+    if (process.env.NODE_ENV !== "production" || !process.env.SMTP_HOST) {
+      console.log(`\n==================================================`);
+      console.log(`🔑 [FOODSAVER EMAIL OTP] Verification code for ${cleanEmail}: ${otp}`);
+      console.log(`==================================================\n`);
+    }
 
     // 3. Save hashed OTP to MySQL database
     await pool.query(
@@ -116,8 +160,8 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
       email: cleanEmail,
       cooldownSeconds: 60,
       expiryMinutes: EXPIRY_MINUTES,
-      // Only include debug OTP in automated test runs
-      ...(process.env.NODE_ENV === "test" ? { _debugOtp: otp } : {}),
+      // Include debug OTP in automated test runs or local dev
+      ...(process.env.NODE_ENV === "test" || process.env.NODE_ENV !== "production" ? { _debugOtp: otp } : {}),
     };
   } catch (err) {
     console.error("[EmailOtpService] Error requesting OTP:", err.message);
@@ -134,7 +178,7 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
  * Enforces: 5-minute expiry, max 5 attempts, single-use atomic invalidation, and updates dim_users.
  */
 async function verifyEmailOtp({ email, otp, userId = null, purpose = "EMAIL_VERIFICATION" }) {
-  if (!email || !otp) {
+  if ((!email && !userId) || !otp) {
     return {
       success: false,
       code: "MISSING_INPUT",
@@ -142,7 +186,8 @@ async function verifyEmailOtp({ email, otp, userId = null, purpose = "EMAIL_VERI
     };
   }
 
-  const cleanEmail = email.trim().toLowerCase();
+  await ensureOtpTableExists();
+  const cleanEmail = (email || "").trim().toLowerCase();
   const cleanOtp = String(otp).trim();
 
   if (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)) {
@@ -154,13 +199,23 @@ async function verifyEmailOtp({ email, otp, userId = null, purpose = "EMAIL_VERI
   }
 
   try {
-    // 1. Fetch latest verification record
-    const [rows] = await pool.query(
-      `SELECT * FROM email_otp_verifications 
-       WHERE LOWER(email) = ? AND purpose = ?
-       ORDER BY created_at DESC LIMIT 1`,
-      [cleanEmail, purpose]
-    );
+    const targetUserId = userId && String(userId).trim() ? String(userId).trim() : null;
+    let rows = [];
+    if (targetUserId) {
+      [rows] = await pool.query(
+        `SELECT *, TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS seconds_until_expiry FROM email_otp_verifications 
+         WHERE (LOWER(email) = ? OR user_id = ?) AND purpose = ?
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanEmail, targetUserId, purpose]
+      );
+    } else {
+      [rows] = await pool.query(
+        `SELECT *, TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS seconds_until_expiry FROM email_otp_verifications 
+         WHERE LOWER(email) = ? AND purpose = ?
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanEmail, purpose]
+      );
+    }
 
     if (rows.length === 0) {
       return {
@@ -182,7 +237,8 @@ async function verifyEmailOtp({ email, otp, userId = null, purpose = "EMAIL_VERI
     }
 
     // 3. Check expiration (5 minutes)
-    if (new Date(record.expires_at).getTime() < Date.now()) {
+    const secondsRemaining = Number(record.seconds_until_expiry);
+    if (!isNaN(secondsRemaining) && secondsRemaining <= 0) {
       return {
         success: false,
         code: "OTP_EXPIRED",
@@ -233,20 +289,22 @@ async function verifyEmailOtp({ email, otp, userId = null, purpose = "EMAIL_VERI
     );
 
     // 7. Update dim_users table: set email_verified = TRUE and email_verified_at = NOW()
-    const targetUserId = userId || record.user_id;
-    if (targetUserId) {
+    const userToUpdate = targetUserId || record.user_id;
+    const effectiveEmail = cleanEmail || record.email;
+
+    if (userToUpdate) {
       await pool.query(
         `UPDATE dim_users 
          SET email_verified = TRUE, email_verified_at = NOW(), status = IF(status = 'PENDING', 'APPROVED', status)
          WHERE user_id = ? OR LOWER(email) = ?`,
-        [targetUserId, cleanEmail]
+        [userToUpdate, effectiveEmail]
       );
     } else {
       await pool.query(
         `UPDATE dim_users 
          SET email_verified = TRUE, email_verified_at = NOW(), status = IF(status = 'PENDING', 'APPROVED', status)
          WHERE LOWER(email) = ?`,
-        [cleanEmail]
+        [effectiveEmail]
       );
     }
 
@@ -255,7 +313,7 @@ async function verifyEmailOtp({ email, otp, userId = null, purpose = "EMAIL_VERI
       success: true,
       code: "VERIFIED",
       message: "Email address verified successfully!",
-      email: cleanEmail,
+      email: effectiveEmail,
     };
   } catch (err) {
     console.error("[EmailOtpService] Error verifying OTP:", err.message);
@@ -274,3 +332,4 @@ module.exports = {
   requestEmailOtp,
   verifyEmailOtp,
 };
+

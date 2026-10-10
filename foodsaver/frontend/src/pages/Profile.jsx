@@ -5,6 +5,7 @@ import { useTranslation, AVAILABLE_LANGUAGES } from "../lib/i18n.jsx";
 import { useTheme } from "../lib/theme.jsx";
 import { api } from "../lib/api.js";
 import { useToast } from "../components/ToastProvider.jsx";
+import EmailOtpModal from "../components/EmailOtpModal.jsx";
 import {
   ShieldCheck,
   Phone,
@@ -136,6 +137,10 @@ export default function Profile() {
     orderAlerts: true,
   });
 
+  // Email OTP Verification Modal State
+  const [isEmailOtpModalOpen, setIsEmailOtpModalOpen] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(Boolean(session?.emailVerified));
+
   // SMS OTP Verification Modal State
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
   const [otpPhone, setOtpPhone] = useState(session?.mobile || session?.phone || "");
@@ -152,6 +157,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (session) {
+      setEmailVerified(Boolean(session.emailVerified));
       setFormData((prev) => ({
         ...prev,
         name: session.name || session.hotelName || prev.name,
@@ -562,7 +568,36 @@ export default function Profile() {
 
                   <div className="info-item-row">
                     <span className="info-label">Contact Email</span>
-                    <strong className="info-value">{session.email || "customer@foodsaver.com"}</strong>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <strong className="info-value">{session.email || "customer@foodsaver.com"}</strong>
+                      {emailVerified ? (
+                        <span style={{ fontSize: 11, color: "#16A34A", fontWeight: 700, display: "flex", alignItems: "center", gap: 3 }}>
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.sendEmailOtp({ email: session.email, userId: session.userId });
+                            } catch (err) {}
+                            setIsEmailOtpModalOpen(true);
+                          }}
+                          style={{
+                            fontSize: 11,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            border: "1px solid var(--color-primary, #145C52)",
+                            background: "var(--color-primary-light, #E8F4F1)",
+                            color: "var(--color-primary, #145C52)",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Verify Email with OTP
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="info-item-row">
@@ -1284,6 +1319,19 @@ export default function Profile() {
           </div>
         </div>
       )}
+
+      {/* Email OTP Verification Modal */}
+      <EmailOtpModal
+        isOpen={isEmailOtpModalOpen}
+        email={session?.email}
+        userId={session?.userId}
+        onSuccess={() => {
+          setEmailVerified(true);
+          setSession({ ...session, emailVerified: true });
+          showToast?.("✓ Email address verified successfully!", "success");
+        }}
+        onClose={() => setIsEmailOtpModalOpen(false)}
+      />
     </div>
   );
 }

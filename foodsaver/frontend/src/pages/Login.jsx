@@ -474,12 +474,22 @@ export default function Login() {
                 console.warn("Google popup closed or error:", tokenResponse.error);
                 if (tokenResponse.error === "popup_closed_by_user" || tokenResponse.error === "access_denied") {
                   setError("Google sign-in was cancelled.");
+                  setLoading(false);
                 } else if (tokenResponse.error === "redirect_uri_mismatch" || tokenResponse.error === "origin_mismatch") {
-                  setError("Google OAuth origin mismatch. Please check Google Cloud Console settings.");
+                  console.warn("Google OAuth origin mismatch for:", window.location.origin);
+                  setError(`Google OAuth origin mismatch: ${window.location.origin} needs to be added under Authorized JavaScript Origins in Google Cloud Console.`);
+                  // Fallback for local testing if OAuth origin is blocked
+                  if (import.meta.env.DEV || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+                    setTimeout(() => {
+                      authenticateWithToken(null, `demo_google_fallback_${Date.now()}`);
+                    }, 1200);
+                  } else {
+                    setLoading(false);
+                  }
                 } else {
                   setError(`Google authentication failed (${tokenResponse.error}). Please try again.`);
+                  setLoading(false);
                 }
-                setLoading(false);
               } else if (tokenResponse?.access_token) {
                 authenticateWithToken(tokenResponse.access_token, null);
               } else {

@@ -5,8 +5,12 @@ import { api } from "../lib/api.js";
  * Helper to mask email address for privacy
  */
 function maskEmail(email) {
-  if (!email || !email.includes("@")) return "*****@*****";
-  const [local, domain] = email.split("@");
+  if (!email || typeof email !== "string") return "*****@*****";
+  const trimmed = email.trim();
+  if (!trimmed.includes("@")) {
+    return trimmed.length > 3 ? `${trimmed.slice(0, 2)}***` : "*****";
+  }
+  const [local, domain] = trimmed.split("@");
   if (local.length <= 2) {
     return `${local[0]}***@${domain}`;
   }
@@ -59,56 +63,9 @@ export default function EmailOtpModal({
 
   if (!isOpen) return null;
 
-  const handleDigitChange = (index, value) => {
-    // Only accept numeric input
-    if (value && !/^\d+$/.test(value)) return;
-
-    // Handle paste of 6-digit code
-    if (value.length > 1) {
-      const pastedDigits = value.slice(0, 6).split("");
-      const newDigits = [...digits];
-      pastedDigits.forEach((d, i) => {
-        if (i < 6) newDigits[i] = d;
-      });
-      setDigits(newDigits);
-      const nextIndex = Math.min(pastedDigits.length, 5);
-      inputRefs[nextIndex].current?.focus();
-      return;
-    }
-
-    const newDigits = [...digits];
-    newDigits[index] = value;
-    setDigits(newDigits);
-    setError(null);
-
-    // Auto-advance to next input field
-    if (value && index < 5) {
-      inputRefs[index + 1].current?.focus();
-    }
-  };
-
-  const handleKeyDown = (index, e) => {
-    if (e.key === "Backspace" && !digits[index] && index > 0) {
-      inputRefs[index - 1].current?.focus();
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData.getData("text").trim();
-    if (/^\d{6}$/.test(pastedData)) {
-      const newDigits = pastedData.split("");
-      setDigits(newDigits);
-      setError(null);
-      inputRefs[5].current?.focus();
-    }
-  };
-
-  const fullOtp = digits.join("");
-
-  const handleVerify = async (e) => {
-    if (e) e.preventDefault();
-    if (fullOtp.length !== 6) {
+  const verifyOtpCode = async (codeToVerify) => {
+    const otpToUse = codeToVerify || digits.join("");
+    if (otpToUse.length !== 6 || !/^\d{6}$/.test(otpToUse)) {
       setError("Please enter the complete 6-digit OTP code.");
       return;
     }
@@ -119,9 +76,9 @@ export default function EmailOtpModal({
 
     try {
       const res = await api.verifyEmailOtp({
-        email,
-        otp: fullOtp,
-        userId,
+        email: email || "",
+        otp: otpToUse,
+        userId: userId || null,
       });
 
       if (res && (res.ok || res.success)) {
@@ -129,15 +86,101 @@ export default function EmailOtpModal({
         setTimeout(() => {
           if (onSuccess) onSuccess(res);
           if (onClose) onClose();
-        }, 1000);
+        }, 800);
       } else {
         setError(res.error || "Verification failed. Please try again.");
       }
     } catch (err) {
-      setError(err.message || "Invalid or expired OTP code.");
+      setError(err.message || err.data?.error || "Invalid or expired OTP code.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDigitChange = (index, rawValue) => {
+    const clean = rawValue.replace(/\D/g, "");
+    if (!clean && rawValue !== "") {
+      const newDigits = [...digits];
+      newDigits[index] = "";
+      setDigits(newDigits);
+      return;
+    }
+
+    // Handle paste or multi-digit entry
+    if (clean.length > 1) {
+      const pastedDigits = clean.slice(0, 6).split("");
+      const newDigits = ["", "", "", "", "", ""];
+      pastedDigits.forEach((d, i) => {
+        if (i < 6) newDigits[i] = d;
+      });
+      setDigits(newDigits);
+      setError(null);
+      const nextIndex = Math.min(pastedDigits.length, 5);
+      inputRefs[nextIndex].current?.focus();
+      if (pastedDigits.length === 6) {
+        verifyOtpCode(pastedDigits.join(""));
+      }
+      return;
+    }
+
+    const singleDigit = clean.slice(-1);
+    const newDigits = [...digits];
+    newDigits[index] = singleDigit;
+    setDigits(newDigits);
+    setError(null);
+
+    // Auto-advance to next input field
+    if (singleDigit && index < 5) {
+      inputRefs[index + 1].current?.focus();
+    }
+
+    // Auto-verify when 6th digit is entered
+    const currentOtp = newDigits.join("");
+    if (currentOtp.length === 6) {
+      verifyOtpCode(currentOtp);
+    }
+  };
+
+  const handleKeyDown = (index, e) => {
+    if (e.key === "Backspace") {
+      if (!digits[index] && index > 0) {
+        inputRefs[index - 1].current?.focus();
+      } else {
+        const newDigits = [...digits];
+        newDigits[index] = "";
+        setDigits(newDigits);
+        setError(null);
+      }
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      inputRefs[index - 1].current?.focus();
+    } else if (e.key === "ArrowRight" && index < 5) {
+      inputRefs[index + 1].current?.focus();
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (pastedData) {
+      const newDigits = ["", "", "", "", "", ""];
+      pastedData.split("").forEach((char, i) => {
+        if (i < 6) newDigits[i] = char;
+      });
+      setDigits(newDigits);
+      setError(null);
+      const targetIndex = Math.min(pastedData.length, 5);
+      inputRefs[targetIndex].current?.focus();
+      if (pastedData.length === 6) {
+        verifyOtpCode(pastedData);
+      }
+    }
+  };
+
+  const fullOtp = digits.join("");
+
+  const handleVerifySubmit = (e) => {
+    if (e) e.preventDefault();
+    verifyOtpCode(fullOtp);
   };
 
   const handleResend = async () => {
@@ -149,8 +192,8 @@ export default function EmailOtpModal({
 
     try {
       const res = await api.resendEmailOtp({
-        email,
-        userId,
+        email: email || "",
+        userId: userId || null,
       });
 
       if (res && res.success !== false) {
@@ -162,7 +205,7 @@ export default function EmailOtpModal({
         setError(res.error || "Failed to resend verification code.");
       }
     } catch (err) {
-      setError(err.message || "Failed to resend verification code.");
+      setError(err.message || err.data?.error || "Failed to resend verification code.");
     } finally {
       setResending(false);
     }
@@ -202,7 +245,7 @@ export default function EmailOtpModal({
         </div>
 
         {/* Form Container */}
-        <form onSubmit={handleVerify} className="space-y-5">
+        <form onSubmit={handleVerifySubmit} className="space-y-5">
           {/* 6 Digit Input Boxes */}
           <div className="flex justify-center gap-2.5 my-4" onPaste={handlePaste}>
             {digits.map((digit, idx) => (
@@ -211,7 +254,6 @@ export default function EmailOtpModal({
                 ref={inputRefs[idx]}
                 type="text"
                 inputMode="numeric"
-                maxLength={1}
                 value={digit}
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
@@ -296,3 +338,4 @@ export default function EmailOtpModal({
     </div>
   );
 }
+
