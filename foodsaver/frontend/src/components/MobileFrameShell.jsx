@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Smartphone, Monitor, ShieldCheck, Sparkles, Wifi, Battery, Volume2 } from "lucide-react";
 
-export default function MobileFrameShell({ children }) {
+export default function MobileFrameShell({ children, onExit }) {
   const [viewMode, setViewMode] = useState("frame"); // "frame" | "expanded"
   const [timeStr, setTimeStr] = useState("");
 
@@ -51,6 +51,18 @@ export default function MobileFrameShell({ children }) {
               <span>Full Mobile View</span>
             </button>
           </div>
+
+          {onExit && (
+            <button
+              type="button"
+              onClick={onExit}
+              className="toggle-btn"
+              style={{ background: "rgba(239, 68, 68, 0.2)", color: "#f87171", border: "1px solid rgba(239, 68, 68, 0.4)", fontWeight: 800 }}
+              title="Return to standard view"
+            >
+              ✕ Exit Mobile View
+            </button>
+          )}
         </div>
       </header>
 

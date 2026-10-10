@@ -5644,3 +5644,250 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   outline-offset: 2px !important;
 }
 
+/* ==========================================================================
+   SMARTPHONE DEVICE FRAME & MOBILE EXPERIENCE SHELL
+   ========================================================================== */
+
+.mobile-experience-root {
+  min-height: 100vh;
+  background: #0f172a;
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-top-control-bar {
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 9999;
+}
+
+.bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-app-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #145C52;
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bar-divider {
+  color: #64748b;
+}
+
+.bar-subtitle {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.view-toggle-group {
+  display: flex;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn.active {
+  background: #145C52;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-viewport-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 16px;
+  overflow-y: auto;
+}
+
+/* Smartphone Mockup Frame */
+.smartphone-device-frame {
+  position: relative;
+  width: 390px;
+  height: 844px;
+  background: #1e293b;
+  border-radius: 50px;
+  padding: 12px;
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 4px #334155,
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+  margin: 0 auto;
+}
+
+/* Side buttons */
+.phone-btn {
+  position: absolute;
+  background: #334155;
+  border-radius: 2px;
+}
+
+.phone-vol-up {
+  top: 110px;
+  left: -6px;
+  width: 5px;
+  height: 48px;
+}
+
+.phone-vol-down {
+  top: 170px;
+  left: -6px;
+  width: 5px;
+  height: 48px;
+}
+
+.phone-power {
+  top: 130px;
+  right: -6px;
+  width: 5px;
+  height: 64px;
+}
+
+/* Screen container */
+.smartphone-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #F7F9F8;
+  border-radius: 40px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Dynamic Island Notch */
+.smartphone-notch {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 110px;
+  height: 24px;
+  background: #000000;
+  border-radius: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.notch-camera {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #0f172a;
+}
+
+.notch-speaker {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: #1e293b;
+}
+
+/* Status Bar */
+.smartphone-status-bar {
+  height: 38px;
+  padding: 8px 22px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f172a;
+  z-index: 999;
+  background: transparent;
+  user-select: none;
+}
+
+.status-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-badge-5g {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+
+/* Scrollable Inner Body */
+.smartphone-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+}
+
+.smartphone-scroll-body .app-shell {
+  min-height: 100%;
+}
+
+/* iOS Home Indicator Bar */
+.smartphone-home-bar {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 128px;
+  height: 4px;
+  background: #0f172a;
+  border-radius: 3px;
+  z-index: 1000;
+  opacity: 0.6;
+}
+
+/* Edge-to-Edge Full Mobile View Container */
+.mobile-expanded-container {
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  background: #F7F9F8;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+

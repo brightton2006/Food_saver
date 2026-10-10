@@ -162,6 +162,7 @@ export default function Header({
   onSearchChange = () => {},
   city = "Kovilpatti",
   onCityChange = () => {},
+  onToggleMobileView,
 }) {
   const { session } = useSession();
   const navigate = useNavigate();
@@ -248,8 +249,32 @@ export default function Header({
           </div>
         </div>
 
-        {/* Right: Offers, My Orders, Nearby Map, Language, Theme, Auth & Cart Actions */}
+        {/* Right: Offers, My Orders, Nearby Map, Mobile View, Language, Theme, Auth & Cart Actions */}
         <div className="header-right">
+          {/* Mobile View Toggle Switcher */}
+          {onToggleMobileView && (
+            <button
+              type="button"
+              className="header-nav-link-item desktop-only-item"
+              onClick={onToggleMobileView}
+              title="Switch to Smartphone Mobile View"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 10px",
+                borderRadius: 10,
+                background: "var(--color-primary-light, #E8F4F1)",
+                color: "var(--color-primary, #145C52)",
+                border: "1px solid var(--fs-border, #DCE6E3)",
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              📱 Mobile View
+            </button>
+          )}
+
           {/* Dynamic Theme Quick Switcher */}
           <div className="desktop-only-item" style={{ position: "relative" }}>
             <button
