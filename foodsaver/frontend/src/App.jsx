@@ -29,7 +29,6 @@ import MerchantDonationPage from "./pages/merchant/DonationPage.jsx";
 import NgoDonations from "./pages/ngo/NgoDonations.jsx";
 import MerchantOnboardingWizard from "./pages/merchant/MerchantOnboardingWizard.jsx";
 import NgoOnboardingWizard from "./pages/ngo/NgoOnboardingWizard.jsx";
-import MobileFrameShell from "./components/MobileFrameShell.jsx";
 
 function RequireRole({ role, children }) {
   const { session } = useSession();
@@ -67,10 +66,6 @@ function Shell() {
   const location = useLocation();
   const toast = useToast();
 
-  const [isMobileView, setIsMobileView] = useState(() => {
-    return new URLSearchParams(window.location.search).get("view") === "mobile";
-  });
-
   const handlePasswordChanged = () => {
     if (session) {
       setSession({ ...session, mustChangePassword: false, must_change_password: false });
@@ -102,7 +97,7 @@ function Shell() {
     navigate(destination);
   };
 
-  const mainContent = (
+  return (
     <div className="app-shell">
       <Header
         onOpenAuth={openAuth}
@@ -273,16 +268,6 @@ function Shell() {
       />
     </div>
   );
-
-  if (isMobileView) {
-    return (
-      <MobileFrameShell onExit={() => setIsMobileView(false)}>
-        {mainContent}
-      </MobileFrameShell>
-    );
-  }
-
-  return mainContent;
 }
 
 export default function App() {
