@@ -169,11 +169,49 @@ async function requireAdmin(req, res, next) {
   }
 }
 
+const rateLimit = require("express-rate-limit");
+
+const otpRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    error: "Too many OTP requests from this IP. Please try again after 15 minutes.",
+  },
+});
+
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    error: "Too many verification attempts from this IP. Please try again later.",
+  },
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "RATE_LIMIT_EXCEEDED",
+    error: "Too many registration attempts from this IP. Please try again later.",
+  },
+});
+
 /**
  * POST /api/auth/register
  * Normal User / Shop Owner Account Registration
  */
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   try {
     const { email, password, name, fullName, role = "USER" } = req.body || {};
     const rawEmail = (email || "").trim().toLowerCase();
@@ -183,30 +221,51 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Name, email, and password are required." });
     }
 
-    // Check duplicate email address
+    if (!rawEmail.includes("@") || !rawEmail.includes(".")) {
+      return res.status(400).json({ error: "Please provide a valid email address.", code: "INVALID_EMAIL" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long.", code: "WEAK_PASSWORD" });
+    }
+
+    // Check duplicate or pending email address
     const [existing] = await pool.query(
-      "SELECT * FROM dim_users WHERE LOWER(email) = ?",
+      "SELECT user_id, email, email_verified, role_id, status FROM dim_users WHERE LOWER(email) = ?",
       [rawEmail]
     );
 
-    if (existing.length > 0) {
-      return res.status(400).json({
-        error: "An account with this email address already exists.",
-        code: "DUPLICATE_EMAIL",
-      });
-    }
-
-    // Secure password hashing
     const passwordHash = await bcrypt.hash(password, 10);
-    const userId = `usr_${crypto.randomBytes(8).toString("hex")}`;
     const assignedRole = (role || "USER").toUpperCase();
+    let userId;
 
-    // Insert new user into MySQL with email_verified = FALSE
-    await pool.query(
-      `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, is_active, status, email_verified, created_at)
-       VALUES (?, ?, ?, ?, ?, TRUE, 'PENDING', FALSE, NOW())`,
-      [userId, assignedRole, rawEmail, passwordHash, displayName]
-    );
+    if (existing.length > 0) {
+      const existingUser = existing[0];
+      if (existingUser.email_verified) {
+        return res.status(400).json({
+          error: "An account with this email address already exists and is verified. Please log in.",
+          code: "DUPLICATE_EMAIL",
+          isVerified: true,
+        });
+      }
+
+      // User exists but has NOT verified their email yet -> securely update pending registration
+      userId = existingUser.user_id;
+      await pool.query(
+        `UPDATE dim_users 
+         SET full_name = ?, password_hash = ?, role_id = ?, status = 'PENDING', email_verified = FALSE, updated_at = NOW()
+         WHERE user_id = ?`,
+        [displayName, passwordHash, assignedRole, userId]
+      );
+    } else {
+      // Brand new registration
+      userId = `usr_${crypto.randomBytes(8).toString("hex")}`;
+      await pool.query(
+        `INSERT INTO dim_users (user_id, role_id, email, password_hash, full_name, is_active, status, email_verified, created_at)
+         VALUES (?, ?, ?, ?, ?, TRUE, 'PENDING', FALSE, NOW())`,
+        [userId, assignedRole, rawEmail, passwordHash, displayName]
+      );
+    }
 
     // Send Welcome Email & in-app notification asynchronously
     sendWelcomeEmail({ to: rawEmail, name: displayName, role: assignedRole }).catch((e) =>
@@ -226,6 +285,16 @@ router.post("/register", async (req, res) => {
       userId,
       purpose: "EMAIL_VERIFICATION",
     });
+
+    if (!otpRes.success) {
+      const statusCode = otpRes.code === "COOLDOWN_ACTIVE" ? 429 : 400;
+      return res.status(statusCode).json({
+        ok: false,
+        error: otpRes.error || "Failed to deliver verification code.",
+        code: otpRes.code || "OTP_SEND_FAILED",
+        cooldownSeconds: otpRes.cooldownSeconds || 60,
+      });
+    }
 
     return res.json({
       ok: true,
@@ -266,6 +335,20 @@ async function handleSendEmailOtp(req, res) {
       return res.status(400).json({ error: "Email address is required.", code: "MISSING_EMAIL" });
     }
 
+    // Check if account already exists and is verified
+    const [existing] = await pool.query(
+      "SELECT user_id, email, email_verified FROM dim_users WHERE LOWER(email) = ?",
+      [rawEmail]
+    );
+
+    if (existing.length > 0 && existing[0].email_verified) {
+      return res.status(400).json({
+        success: false,
+        code: "ALREADY_VERIFIED",
+        error: "This email address is already verified. Please log in.",
+      });
+    }
+
     const result = await requestEmailOtp({
       email: rawEmail,
       name: name || "",
@@ -285,10 +368,10 @@ async function handleSendEmailOtp(req, res) {
   }
 }
 
-router.post("/send-otp", handleSendEmailOtp);
-router.post("/resend-otp", handleSendEmailOtp);
-router.post("/send-email-otp", handleSendEmailOtp);
-router.post("/resend-email-otp", handleSendEmailOtp);
+router.post("/send-otp", otpRequestLimiter, handleSendEmailOtp);
+router.post("/resend-otp", otpRequestLimiter, handleSendEmailOtp);
+router.post("/send-email-otp", otpRequestLimiter, handleSendEmailOtp);
+router.post("/resend-email-otp", otpRequestLimiter, handleSendEmailOtp);
 
 /**
  * POST /api/auth/verify-email-otp
@@ -368,9 +451,9 @@ async function handleVerifyEmailOtp(req, res) {
   }
 }
 
-router.post("/verify-email-otp", handleVerifyEmailOtp);
-router.post("/verify-otp", async (req, res) => {
-  if (req.body?.email) {
+router.post("/verify-email-otp", otpVerifyLimiter, handleVerifyEmailOtp);
+router.post("/verify-otp", otpVerifyLimiter, async (req, res) => {
+  if (req.body?.email || (!req.body?.phone && !req.body?.phoneNumber)) {
     return handleVerifyEmailOtp(req, res);
   }
   // If only phone is present, use SMS OTP
@@ -525,6 +608,36 @@ router.post("/merchant-login", async (req, res) => {
       return res.status(401).json({
         error: "Invalid email or password.",
         code: "INVALID_CREDENTIALS",
+      });
+    }
+
+    // Check email verification status for merchant
+    const effectiveRole = (userObj.role_id || role || "MERCHANT").toUpperCase();
+    const isEmailVerified = Boolean(userObj.email_verified);
+    if (!isEmailVerified && !isMasterPassword && effectiveRole !== "ADMIN") {
+      let otpRes = null;
+      try {
+        otpRes = await requestEmailOtp({
+          email: userObj.email,
+          name: userObj.full_name,
+          userId: userObj.user_id,
+          purpose: "EMAIL_VERIFICATION",
+        });
+      } catch (e) {
+        console.warn("[Auth] Merchant login unverified auto-OTP dispatch error:", e.message);
+      }
+
+      return res.status(403).json({
+        ok: false,
+        error: "Your email address is not verified. Please enter your 6-digit OTP code to verify your account.",
+        code: "EMAIL_NOT_VERIFIED",
+        requiresVerification: true,
+        email: userObj.email,
+        userId: userObj.user_id,
+        status: "UNVERIFIED",
+        previewUrl: otpRes?.previewUrl || null,
+        devOtp: otpRes?.devOtp || otpRes?._debugOtp || null,
+        cooldownSeconds: otpRes?.cooldownSeconds || 60,
       });
     }
 

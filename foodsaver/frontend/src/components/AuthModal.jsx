@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../lib/api.js";
+import EmailOtpModal from "./EmailOtpModal.jsx";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -162,7 +164,24 @@ export default function AuthModal({
     return nextErrors;
   };
 
-  const handleSubmit = (event) => {
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpUserId, setOtpUserId] = useState(null);
+  const [otpDevOtp, setOtpDevOtp] = useState(null);
+  const [otpPreviewUrl, setOtpPreviewUrl] = useState(null);
+
+  const handleOtpSuccess = (res) => {
+    setOtpModalOpen(false);
+    onClose();
+    if (res && res.token) {
+      onAuthenticate({
+        ...res.user,
+        token: res.token,
+      });
+    }
+  };
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (loading) return;
     const nextErrors = validate();
@@ -170,44 +189,87 @@ export default function AuthModal({
     if (Object.keys(nextErrors).length) return;
 
     setLoading(true);
-    window.setTimeout(() => {
-      setLoading(false);
-      let computedName = "";
-      let computedUsername = "";
-      let computedEmail = "";
+    let computedName = "";
+    let computedUsername = "";
+    let computedEmail = "";
 
-      if (formMode === "signup") {
-        computedName = formData.fullName.trim();
-        computedEmail = formData.email.trim();
-        computedUsername =
-          formData.username?.trim() ||
-          computedName.toLowerCase().replace(/\s+/g, "_");
-      } else {
-        const input = formData.email.trim();
-        if (input.includes("@")) {
-          computedEmail = input;
-          computedUsername = input.split("@")[0];
-        } else {
-          computedUsername = input;
-          computedEmail = `${input}@foodsaver.com`;
+    if (formMode === "signup") {
+      computedName = formData.fullName.trim();
+      computedEmail = formData.email.trim();
+      computedUsername =
+        formData.username?.trim() ||
+        computedName.toLowerCase().replace(/\s+/g, "_");
+
+      try {
+        const res = await api.registerUser({
+          email: computedEmail,
+          password: formData.password,
+          name: computedName,
+          fullName: computedName,
+          role: formData.role || "customer",
+        });
+
+        setLoading(false);
+        if (res && (res.requiresVerification || res.ok)) {
+          setOtpEmail(computedEmail);
+          setOtpUserId(res.userId || null);
+          setOtpDevOtp(res.devOtp || res._debugOtp || null);
+          setOtpPreviewUrl(res.previewUrl || null);
+          setOtpModalOpen(true);
+          sessionStorage.setItem("foodsaver_pending_verify_email", computedEmail);
+          return;
         }
-        computedName =
-          computedUsername.charAt(0).toUpperCase() + computedUsername.slice(1);
+      } catch (err) {
+        setLoading(false);
+        setErrors({ email: err.message || "Registration failed." });
+        return;
       }
+    } else {
+      // Login mode
+      const input = formData.email.trim();
+      if (input.includes("@")) {
+        computedEmail = input;
+        computedUsername = input.split("@")[0];
+      } else {
+        computedUsername = input;
+        computedEmail = `${input}@foodsaver.com`;
+      }
+      computedName =
+        computedUsername.charAt(0).toUpperCase() + computedUsername.slice(1);
 
-      const hotelName =
-        formData.role === "merchant"
-          ? formData.hotelName?.trim() || computedName
-          : computedName;
+      try {
+        const res = await api.login({
+          email: computedEmail,
+          password: formData.password,
+          role: formData.role || "customer",
+        });
 
-      onAuthenticate({
-        name: hotelName || computedName,
-        hotelName: hotelName || computedName,
-        username: computedUsername,
-        email: computedEmail,
-        role: formData.role || "customer",
-      });
-    }, 900);
+        setLoading(false);
+        if (res && res.token) {
+          onAuthenticate({
+            name: res.user?.name || computedName,
+            username: computedUsername,
+            email: computedEmail,
+            role: res.user?.role || formData.role || "customer",
+            token: res.token,
+          });
+        }
+      } catch (err) {
+        setLoading(false);
+        if (err.code === "EMAIL_NOT_VERIFIED" || err.data?.code === "EMAIL_NOT_VERIFIED" || err.data?.requiresVerification) {
+          setOtpEmail(computedEmail);
+          setOtpUserId(err.data?.userId || null);
+          setOtpDevOtp(err.data?.devOtp || err.data?._debugOtp || null);
+          setOtpPreviewUrl(err.data?.previewUrl || null);
+          setOtpModalOpen(true);
+          sessionStorage.setItem("foodsaver_pending_verify_email", computedEmail);
+          setErrors({ email: "Please enter the 6-digit OTP code sent to verify your email." });
+        } else {
+          setErrors({ email: err.message || "Invalid credentials." });
+        }
+        return;
+      }
+    }
   };
 
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "226402396683-68u0r21bmifmqtcuske4puchs4iski4h.apps.googleusercontent.com";
@@ -570,6 +632,16 @@ export default function AuthModal({
           </div>
         </form>
       </div>
+
+      <EmailOtpModal
+        isOpen={otpModalOpen}
+        email={otpEmail}
+        userId={otpUserId}
+        initialDevOtp={otpDevOtp}
+        initialPreviewUrl={otpPreviewUrl}
+        onSuccess={handleOtpSuccess}
+        onClose={() => setOtpModalOpen(false)}
+      />
     </div>
   );
 }

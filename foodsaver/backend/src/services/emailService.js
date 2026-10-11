@@ -17,11 +17,12 @@ let etherealAccount = null;
  */
 function getFromAddress() {
   const configuredFrom = process.env.EMAIL_FROM;
+  const smtpUser = process.env.SMTP_USER || "";
   if (configuredFrom && !configuredFrom.includes("no-reply@foodsaver.com")) {
     return configuredFrom;
   }
-  if (SMTP_USER && SMTP_USER.includes("@")) {
-    return `"FoodSaver" <${SMTP_USER}>`;
+  if (smtpUser && smtpUser.includes("@")) {
+    return `"FoodSaver" <${smtpUser}>`;
   }
   return configuredFrom || '"FoodSaver" <no-reply@foodsaver.com>';
 }
@@ -55,41 +56,54 @@ function extractPlainText(html) {
  * Initializes or retrieves nodemailer transporter
  */
 async function getTransporter() {
-  if (transporter) return transporter;
+  const currentHost = process.env.SMTP_HOST || "";
+  const currentPort = parseInt(process.env.SMTP_PORT || "587", 10);
+  const currentSecure = process.env.SMTP_SECURE === "true" || currentPort === 465;
+  const currentUser = process.env.SMTP_USER || "";
+  const currentPass = process.env.SMTP_PASS || "";
+  const configKey = `${currentHost}:${currentPort}:${currentUser}:${currentPass ? "set" : "none"}`;
 
-  const isGmail = (SMTP_HOST && SMTP_HOST.includes("gmail")) || (SMTP_USER && SMTP_USER.includes("@gmail.com"));
+  if (transporter && transporter._configKey === configKey) {
+    return transporter;
+  }
 
-  if (SMTP_USER && SMTP_PASS) {
+  const isGmail = (currentHost && currentHost.includes("gmail")) || (currentUser && currentUser.includes("@gmail.com"));
+
+  if (currentUser && currentPass) {
     if (isGmail) {
       transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
+          user: currentUser,
+          pass: currentPass,
         },
         tls: {
           rejectUnauthorized: false,
         },
       });
-      console.log(`📧 [EmailService] Configured with Gmail SMTP for ${SMTP_USER}`);
-    } else if (SMTP_HOST) {
+      transporter._configKey = configKey;
+      console.log(`📧 [EmailService] Configured with Gmail SMTP for ${currentUser}`);
+      return transporter;
+    } else if (currentHost) {
       transporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: SMTP_SECURE,
+        host: currentHost,
+        port: currentPort,
+        secure: currentSecure,
         auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
+          user: currentUser,
+          pass: currentPass,
         },
         tls: {
           rejectUnauthorized: false,
         },
       });
-      console.log(`📧 [EmailService] Configured with real SMTP server: ${SMTP_HOST}:${SMTP_PORT}`);
+      transporter._configKey = configKey;
+      console.log(`📧 [EmailService] Configured with real SMTP server: ${currentHost}:${currentPort}`);
+      return transporter;
     }
   }
 
-  if (!transporter) {
+  if (!transporter || transporter._configKey !== "fallback") {
     try {
       // Auto-generate Ethereal test account for instant dev email inbox delivery & web previews
       etherealAccount = await nodemailer.createTestAccount();
@@ -102,12 +116,14 @@ async function getTransporter() {
           pass: etherealAccount.pass,
         },
       });
+      transporter._configKey = "fallback";
       console.log(`📧 [EmailService] Generated automatic Ethereal test inbox account (${etherealAccount.user})`);
     } catch (err) {
       console.warn("⚠️ [EmailService] Ethereal account creation failed, using JSON transport:", err.message);
       transporter = nodemailer.createTransport({
         jsonTransport: true,
       });
+      transporter._configKey = "fallback";
     }
   }
 

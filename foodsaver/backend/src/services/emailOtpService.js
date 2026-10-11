@@ -107,12 +107,19 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
       }
     }
 
-    // 2. Generate secure 6-digit OTP & Hash
+    // 2. Invalidate any prior unverified OTPs for this email/user to enforce single active OTP
+    await pool.query(
+      `UPDATE email_otp_verifications 
+       SET is_verified = TRUE 
+       WHERE (LOWER(email) = ? ${targetUserId ? "OR user_id = ?" : ""}) AND purpose = ? AND is_verified = FALSE`,
+      targetUserId ? [cleanEmail, targetUserId, purpose] : [cleanEmail, purpose]
+    );
+
+    // 3. Generate secure 6-digit OTP & Hash
     const otp = generateOtp();
     const otpHash = hashOtp(otp);
     const id = `em_otp_${crypto.randomBytes(8).toString("hex")}`;
-    const EXPIRY_MINUTES = 5;
-    const expiresAt = new Date(Date.now() + EXPIRY_MINUTES * 60 * 1000);
+    const EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES || "5", 10);
 
     // Print OTP in development console for instant test visibility
     if (process.env.NODE_ENV !== "production" || !process.env.SMTP_HOST) {
@@ -121,22 +128,15 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
       console.log(`==================================================\n`);
     }
 
-    // 3. Save hashed OTP to MySQL database
+    // 4. Save hashed OTP to MySQL database using DATE_ADD(NOW(), INTERVAL ? MINUTE)
     await pool.query(
       `INSERT INTO email_otp_verifications 
          (id, email, user_id, otp_hash, purpose, attempts, max_attempts, is_verified, expires_at, last_sent_at, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, 5, FALSE, ?, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE
-         otp_hash = VALUES(otp_hash),
-         user_id = VALUES(user_id),
-         attempts = 0,
-         is_verified = FALSE,
-         expires_at = VALUES(expires_at),
-         last_sent_at = NOW()`,
-      [id, cleanEmail, userId, otpHash, purpose, expiresAt]
+       VALUES (?, ?, ?, ?, ?, 0, 5, FALSE, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW(), NOW())`,
+      [id, cleanEmail, userId, otpHash, purpose, EXPIRY_MINUTES]
     );
 
-    // 4. Deliver OTP email via Nodemailer SMTP
+    // 5. Deliver OTP email via Nodemailer SMTP
     const mailResult = await sendOtpEmail({
       to: cleanEmail,
       name: name || cleanEmail.split("@")[0],
@@ -149,6 +149,14 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
         success: false,
         code: "EMAIL_DELIVERY_FAILED",
         error: "Failed to deliver verification email to the specified address.",
+      };
+    }
+
+    if (!mailResult.success && process.env.SMTP_HOST && process.env.SMTP_USER) {
+      return {
+        success: false,
+        code: "EMAIL_DELIVERY_FAILED",
+        error: mailResult.error || "Failed to deliver verification email via SMTP.",
       };
     }
 

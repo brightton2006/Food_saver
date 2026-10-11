@@ -22,6 +22,7 @@ import Login from "./pages/Login.jsx";
 import CheckoutPage from "./pages/CheckoutPage.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import RestaurantPage from "./pages/RestaurantPage.jsx";
+import VerifyEmail from "./pages/VerifyEmail.jsx";
 
 // New Location-Aware & Donation Pages
 import NearbyFood from "./pages/customer/NearbyFood.jsx";
@@ -245,6 +246,8 @@ function Shell() {
         <Route path="/signup/:role" element={<Login />} />
         <Route path="/merchant/login" element={<Login />} />
         <Route path="/merchant/register" element={<Login />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/verify-otp" element={<VerifyEmail />} />
         <Route path="/merchant/onboarding" element={<MerchantOnboardingWizard />} />
         <Route path="/ngo/onboarding" element={<NgoOnboardingWizard />} />
         <Route path="*" element={<Navigate to="/" replace />} />

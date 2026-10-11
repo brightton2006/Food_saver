@@ -366,6 +366,15 @@ export default function EmailOtpModal({
                   : "Didn't receive code? Resend OTP"}
               </button>
             </div>
+
+            <div className="text-center pt-1 border-t border-slate-800">
+              <a
+                href={`/verify-email?email=${encodeURIComponent(email || "")}`}
+                className="text-[11px] text-slate-400 hover:text-emerald-400 underline"
+              >
+                Open full verification page ↗
+              </a>
+            </div>
           </div>
         </form>
       </div>

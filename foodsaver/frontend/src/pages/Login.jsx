@@ -251,6 +251,8 @@ export default function Login() {
             setOtpDevOtp(res.devOtp || res._debugOtp || null);
             setOtpPreviewUrl(res.previewUrl || null);
             setOtpModalOpen(true);
+            sessionStorage.setItem("foodsaver_pending_verify_email", email.trim());
+            if (res.userId) sessionStorage.setItem("foodsaver_pending_verify_userid", res.userId);
           } else {
             setSignupSuccess(res.message || "Registration successful. Please verify your email.");
             setAuthMode("login");
@@ -354,6 +356,8 @@ export default function Login() {
         setOtpDevOtp(err.data?.devOtp || err.data?._debugOtp || null);
         setOtpPreviewUrl(err.data?.previewUrl || null);
         setOtpModalOpen(true);
+        sessionStorage.setItem("foodsaver_pending_verify_email", email.trim());
+        if (err.data?.userId) sessionStorage.setItem("foodsaver_pending_verify_userid", err.data.userId);
         setError("Your email is not verified yet. Please enter the 6-digit OTP sent to your email.");
       } else {
         setError(err.message || "Authentication failed. Please check credentials.");
