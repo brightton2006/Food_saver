@@ -72,6 +72,8 @@ export default function Login() {
   const [otpModalOpen, setOtpModalOpen] = useState(false);
   const [otpEmail, setOtpEmail] = useState("");
   const [otpUserId, setOtpUserId] = useState(null);
+  const [otpDevOtp, setOtpDevOtp] = useState(null);
+  const [otpPreviewUrl, setOtpPreviewUrl] = useState(null);
 
   const handleOtpSuccess = (res) => {
     setOtpModalOpen(false);
@@ -246,6 +248,8 @@ export default function Login() {
           if (res && (res.requiresVerification || res.ok)) {
             setOtpEmail(email.trim());
             setOtpUserId(res.userId || null);
+            setOtpDevOtp(res.devOtp || res._debugOtp || null);
+            setOtpPreviewUrl(res.previewUrl || null);
             setOtpModalOpen(true);
           } else {
             setSignupSuccess(res.message || "Registration successful. Please verify your email.");
@@ -347,6 +351,8 @@ export default function Login() {
       if (err.code === "EMAIL_NOT_VERIFIED" || err.data?.code === "EMAIL_NOT_VERIFIED" || err.data?.requiresVerification) {
         setOtpEmail(email.trim());
         setOtpUserId(err.data?.userId || null);
+        setOtpDevOtp(err.data?.devOtp || err.data?._debugOtp || null);
+        setOtpPreviewUrl(err.data?.previewUrl || null);
         setOtpModalOpen(true);
         setError("Your email is not verified yet. Please enter the 6-digit OTP sent to your email.");
       } else {
@@ -1244,6 +1250,8 @@ export default function Login() {
         isOpen={otpModalOpen}
         email={otpEmail || email}
         userId={otpUserId}
+        initialDevOtp={otpDevOtp}
+        initialPreviewUrl={otpPreviewUrl}
         onSuccess={handleOtpSuccess}
         onClose={() => setOtpModalOpen(false)}
       />

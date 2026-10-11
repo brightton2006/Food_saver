@@ -235,6 +235,8 @@ router.post("/register", async (req, res) => {
       email: rawEmail,
       userId,
       cooldownSeconds: otpRes.cooldownSeconds || 60,
+      previewUrl: otpRes.previewUrl || null,
+      devOtp: otpRes.devOtp || otpRes._debugOtp || null,
       user: {
         userId,
         email: rawEmail,
@@ -716,6 +718,18 @@ router.post("/login", async (req, res) => {
     const effectiveRole = (userObj.role_id || role || "USER").toUpperCase();
     const isEmailVerified = Boolean(userObj.email_verified);
     if (!isEmailVerified && !isMasterPassword && effectiveRole !== "ADMIN") {
+      let otpRes = null;
+      try {
+        otpRes = await requestEmailOtp({
+          email: userObj.email,
+          name: userObj.full_name,
+          userId: userObj.user_id,
+          purpose: "EMAIL_VERIFICATION",
+        });
+      } catch (e) {
+        console.warn("[Auth] Login unverified auto-OTP dispatch error:", e.message);
+      }
+
       return res.status(403).json({
         ok: false,
         error: "Your email address is not verified. Please enter your 6-digit OTP code to verify your account.",
@@ -724,6 +738,9 @@ router.post("/login", async (req, res) => {
         email: userObj.email,
         userId: userObj.user_id,
         status: "UNVERIFIED",
+        previewUrl: otpRes?.previewUrl || null,
+        devOtp: otpRes?.devOtp || otpRes?._debugOtp || null,
+        cooldownSeconds: otpRes?.cooldownSeconds || 60,
       });
     }
 

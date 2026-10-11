@@ -21,6 +21,8 @@ export default function EmailOtpModal({
   isOpen,
   email,
   userId = null,
+  initialDevOtp = null,
+  initialPreviewUrl = null,
   onSuccess,
   onClose,
   title = "Verify Your Email Address",
@@ -41,6 +43,9 @@ export default function EmailOtpModal({
     useRef(null),
   ];
 
+  const [devOtp, setDevOtp] = useState(initialDevOtp || null);
+  const [previewUrl, setPreviewUrl] = useState(initialPreviewUrl || null);
+
   // Reset modal state when opened
   useEffect(() => {
     if (isOpen) {
@@ -48,9 +53,11 @@ export default function EmailOtpModal({
       setError(null);
       setSuccessMsg(null);
       setCooldown(60);
+      setDevOtp(initialDevOtp || null);
+      setPreviewUrl(initialPreviewUrl || null);
       setTimeout(() => inputRefs[0].current?.focus(), 150);
     }
-  }, [isOpen, email]);
+  }, [isOpen, email, initialDevOtp, initialPreviewUrl]);
 
   // 60-second Countdown Timer
   useEffect(() => {
@@ -197,6 +204,8 @@ export default function EmailOtpModal({
       });
 
       if (res && res.success !== false) {
+        if (res.devOtp || res._debugOtp) setDevOtp(res.devOtp || res._debugOtp);
+        if (res.previewUrl) setPreviewUrl(res.previewUrl);
         setSuccessMsg(`✓ A new 6-digit code has been sent to ${maskEmail(email)}.`);
         setCooldown(res.cooldownSeconds || 60);
         setDigits(["", "", "", "", "", ""]);
@@ -246,6 +255,31 @@ export default function EmailOtpModal({
 
         {/* Form Container */}
         <form onSubmit={handleVerifySubmit} className="space-y-5">
+          {devOtp && (
+            <div className="p-3 text-xs font-semibold text-emerald-300 bg-emerald-950/80 border border-emerald-500/50 rounded-xl mb-3 flex items-center justify-between shadow-lg animate-fade-in">
+              <span>🔑 Demo OTP: <strong className="font-mono text-emerald-200 text-sm ml-1">{devOtp}</strong></span>
+              <button
+                type="button"
+                onClick={() => {
+                  const arr = String(devOtp).split("");
+                  setDigits(arr);
+                  verifyOtpCode(devOtp);
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg cursor-pointer transition-all"
+              >
+                Auto Fill & Verify
+              </button>
+            </div>
+          )}
+
+          {previewUrl && (
+            <div className="p-2.5 text-xs text-slate-300 bg-slate-800/80 border border-slate-700 rounded-xl mb-3 text-center">
+              📩 Testing Email Inbox:{" "}
+              <a href={previewUrl} target="_blank" rel="noreferrer" className="text-emerald-400 font-bold underline hover:text-emerald-300 ml-1">
+                Open Web Test Inbox ↗
+              </a>
+            </div>
+          )}
           {/* 6 Digit Input Boxes */}
           <div className="flex justify-center gap-2.5 my-4" onPaste={handlePaste}>
             {digits.map((digit, idx) => (

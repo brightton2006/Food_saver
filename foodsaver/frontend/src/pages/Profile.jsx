@@ -139,6 +139,7 @@ export default function Profile() {
 
   // Email OTP Verification Modal State
   const [isEmailOtpModalOpen, setIsEmailOtpModalOpen] = useState(false);
+  const [emailOtpData, setEmailOtpData] = useState({ devOtp: null, previewUrl: null });
   const [emailVerified, setEmailVerified] = useState(Boolean(session?.emailVerified));
 
   // SMS OTP Verification Modal State
@@ -579,7 +580,8 @@ export default function Profile() {
                           type="button"
                           onClick={async () => {
                             try {
-                              await api.sendEmailOtp({ email: session.email, userId: session.userId });
+                              const res = await api.sendEmailOtp({ email: session.email, userId: session.userId });
+                              setEmailOtpData({ devOtp: res?.devOtp || res?._debugOtp || null, previewUrl: res?.previewUrl || null });
                             } catch (err) {}
                             setIsEmailOtpModalOpen(true);
                           }}
@@ -1325,6 +1327,8 @@ export default function Profile() {
         isOpen={isEmailOtpModalOpen}
         email={session?.email}
         userId={session?.userId}
+        initialDevOtp={emailOtpData.devOtp}
+        initialPreviewUrl={emailOtpData.previewUrl}
         onSuccess={() => {
           setEmailVerified(true);
           setSession({ ...session, emailVerified: true });

@@ -49,6 +49,34 @@ export default function MerchantCounter() {
     [session]
   );
 
+  const matchesClaim = useCallback(
+    (claim) => {
+      if (!claim) return true;
+      if (!session) return true;
+      const sUser = String(session.username || "").toLowerCase();
+      const sRole = String(session.role || "").toLowerCase();
+      if (sUser === "admin" || sRole === "admin") return true;
+
+      const sHotelId = String(session.hotelId || session.merchantId || "").trim().toLowerCase();
+      const sUserId = String(session.userId || "").trim().toLowerCase();
+      const sHotel = String(session.hotelName || "").trim().toLowerCase();
+      const sName = String(session.name || "").trim().toLowerCase();
+
+      const cHotelId = String(claim.hotelId || claim.merchantId || "").trim().toLowerCase();
+      const cUserId = String(claim.merchantUserId || "").trim().toLowerCase();
+      const cName = String(claim.merchantName || "").trim().toLowerCase();
+
+      if (sHotelId && cHotelId && sHotelId === cHotelId) return true;
+      if (sUserId && cUserId && sUserId === cUserId) return true;
+      if (sUserId && cHotelId && sUserId === cHotelId) return true;
+      if (sHotel && cName && (sHotel === cName || sHotel.includes(cName) || cName.includes(sHotel))) return true;
+      if (sName && cName && (sName === cName || sName.includes(cName) || cName.includes(sName))) return true;
+
+      return matchesSession(claim.merchantName);
+    },
+    [session, matchesSession]
+  );
+
   const loadQueue = useCallback(async () => {
     try {
       const data = await api.getMerchantClaims(merchantIdentifier || "all");
@@ -62,7 +90,7 @@ export default function MerchantCounter() {
     loadQueue();
 
     const handleClaimCreated = (newClaim) => {
-      if (matchesSession(newClaim.merchantName)) {
+      if (matchesClaim(newClaim)) {
         setQueue((prev) => {
           const exists = prev.some((c) => c.token === newClaim.token);
           if (exists) return prev.map((c) => (c.token === newClaim.token ? newClaim : c));
@@ -101,17 +129,19 @@ export default function MerchantCounter() {
     };
 
     socket.on("claim:created", handleClaimCreated);
+    socket.on("order:created", handleClaimCreated);
     socket.on("claim:updated", handleClaimUpdated);
     socket.on("order:token_verified", handleTokenVerified);
     socket.on("order:completed", handleOrderCompleted);
 
     return () => {
       socket.off("claim:created", handleClaimCreated);
+      socket.off("order:created", handleClaimCreated);
       socket.off("claim:updated", handleClaimUpdated);
       socket.off("order:token_verified", handleTokenVerified);
       socket.off("order:completed", handleOrderCompleted);
     };
-  }, [loadQueue, matchesSession, verificationResult]);
+  }, [loadQueue, matchesClaim, verificationResult]);
 
   // Option 1 — Verify Token from manual text input
   const handleVerifyToken = async (e) => {
@@ -189,21 +219,22 @@ export default function MerchantCounter() {
     }
   };
 
-  const pending = queue.filter(
-    (c) =>
-      c.status === "pending" ||
-      c.status === "ready" ||
-      c.status === "READY_FOR_PICKUP" ||
-      c.status === "TOKEN_VERIFIED"
-  );
-  const completed = queue.filter(
-    (c) =>
-      c.status === "collected" ||
-      c.status === "PICKED_UP" ||
-      c.status === "COMPLETED" ||
-      c.status === "DELIVERED"
-  );
-  const rerouted = queue.filter((c) => c.status === "rerouted_to_ngo");
+  const isPending = (status) => {
+    const s = String(status || "").toUpperCase();
+    return ["PENDING", "READY", "READY_FOR_PICKUP", "TOKEN_VERIFIED", "CONFIRMED", "ORDER_PLACED"].includes(s);
+  };
+  const isCompleted = (status) => {
+    const s = String(status || "").toUpperCase();
+    return ["COLLECTED", "PICKED_UP", "COMPLETED", "DELIVERED"].includes(s);
+  };
+  const isRerouted = (status) => {
+    const s = String(status || "").toUpperCase();
+    return ["REROUTED_TO_NGO", "REROUTED", "NGO_CLAIMED", "DONATED"].includes(s);
+  };
+
+  const pending = queue.filter((c) => isPending(c.status));
+  const completed = queue.filter((c) => isCompleted(c.status));
+  const rerouted = queue.filter((c) => isRerouted(c.status));
 
   return (
     <div className="app-main">

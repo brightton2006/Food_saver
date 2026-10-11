@@ -110,9 +110,34 @@ export default function MerchantDashboard() {
       );
     };
 
+    const matchesClaim = (claim) => {
+      if (!claim) return true;
+      if (!session) return true;
+      const sRole = String(session.role || "").toLowerCase();
+      const sUser = String(session.username || "").toLowerCase();
+      if (sRole === "admin" || sUser === "admin") return true;
+
+      const sHotelId = String(session.hotelId || session.merchantId || "").trim().toLowerCase();
+      const sUserId = String(session.userId || "").trim().toLowerCase();
+      const sHotel = String(session.hotelName || "").trim().toLowerCase();
+      const sName = String(session.name || "").trim().toLowerCase();
+
+      const cHotelId = String(claim.hotelId || claim.merchantId || "").trim().toLowerCase();
+      const cUserId = String(claim.merchantUserId || "").trim().toLowerCase();
+      const cName = String(claim.merchantName || "").trim().toLowerCase();
+
+      if (sHotelId && cHotelId && sHotelId === cHotelId) return true;
+      if (sUserId && cUserId && sUserId === cUserId) return true;
+      if (sUserId && cHotelId && sUserId === cHotelId) return true;
+      if (sHotel && cName && (sHotel === cName || sHotel.includes(cName) || cName.includes(sHotel))) return true;
+      if (sName && cName && (sName === cName || sName.includes(cName) || cName.includes(sName))) return true;
+
+      return matchesSession(claim.merchantName);
+    };
+
     const onUpdate = (listing) => {
-      if (!matchesSession(listing.merchantName)) return;
-      if (listing.status === "expired_donatable") {
+      if (!matchesSession(listing?.merchantName)) return;
+      if (listing?.status === "expired_donatable") {
         pushToast(
           <>
             <strong>Counter closed</strong> — {listing.itemName} still had{" "}
@@ -123,14 +148,14 @@ export default function MerchantDashboard() {
       }
     };
     const onClaim = (claim) => {
-      if (!matchesSession(claim.merchantName)) return;
+      if (!matchesClaim(claim)) return;
       loadTodaySales();
       loadMerchantClaims();
       refresh();
       pushToast(
         <>
-          <strong>🔔 New Order Received!</strong> — {claim.customerName || "Customer"} ordered{" "}
-          {claim.quantity} × {claim.itemName} (₹{claim.pricePaid || 0}). Token #{claim.token}.
+          <strong>🔔 New Order Received!</strong> — {claim?.customerName || "Customer"} ordered{" "}
+          {claim?.quantity || 1} × {claim?.itemName} (₹{claim?.pricePaid || 0}). Token #{claim?.token}.
         </>,
       );
     };
@@ -139,13 +164,13 @@ export default function MerchantDashboard() {
       loadMerchantClaims();
     };
     const onNgoCollected = (notice) => {
-      if (!matchesSession(notice.merchantName)) return;
+      if (!matchesSession(notice?.merchantName)) return;
       loadTodaySales();
       loadMerchantClaims();
       pushToast(
         <>
-          <strong>Pickup confirmed</strong> — {notice.ngoName} collected{" "}
-          {notice.itemName} for your counter.
+          <strong>Pickup confirmed</strong> — {notice?.ngoName} collected{" "}
+          {notice?.itemName} for your counter.
         </>,
       );
     };
@@ -587,91 +612,77 @@ export default function MerchantDashboard() {
         </div>
 
         {/* FILTER TABS */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
-          {[
-            {
-              id: "pending",
-              label: `Pending Pickups (${
-                merchantClaims.filter(
-                  (c) =>
-                    c.status === "pending" ||
-                    c.status === "ready" ||
-                    c.status === "READY_FOR_PICKUP" ||
-                    c.status === "TOKEN_VERIFIED"
-                ).length
-              })`,
-            },
-            {
-              id: "completed",
-              label: `Completed Orders (${
-                merchantClaims.filter(
-                  (c) =>
-                    c.status === "collected" ||
-                    c.status === "PICKED_UP" ||
-                    c.status === "COMPLETED" ||
-                    c.status === "DELIVERED"
-                ).length
-              })`,
-            },
-            { id: "all", label: `All Orders (${merchantClaims.length})` },
-            {
-              id: "rerouted_to_ngo",
-              label: `Rerouted to NGO (${
-                merchantClaims.filter((c) => c.status === "rerouted_to_ngo").length
-              })`,
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setClaimsFilter(tab.id)}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 20,
-                fontSize: 12.5,
-                fontWeight: 700,
-                cursor: "pointer",
-                background: claimsFilter === tab.id ? "#69C7A8" : "#2D3B37",
-                color: claimsFilter === tab.id ? "#000" : "#cbd5e1",
-                border: `1px solid ${claimsFilter === tab.id ? "#69C7A8" : "#66736F"}`,
-                transition: "all 0.2s ease",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* FILTER TABS */}
+        {(() => {
+          const isPending = (status) => {
+            const s = String(status || "").toUpperCase();
+            return ["PENDING", "READY", "READY_FOR_PICKUP", "TOKEN_VERIFIED", "CONFIRMED", "ORDER_PLACED"].includes(s);
+          };
+          const isCompleted = (status) => {
+            const s = String(status || "").toUpperCase();
+            return ["COLLECTED", "PICKED_UP", "COMPLETED", "DELIVERED"].includes(s);
+          };
+          const isRerouted = (status) => {
+            const s = String(status || "").toUpperCase();
+            return ["REROUTED_TO_NGO", "REROUTED", "NGO_CLAIMED", "DONATED"].includes(s);
+          };
 
-        {/* CLAIMS LIST */}
-        {merchantClaims.length === 0 ? (
-          <div style={{ padding: "36px 16px", textAlign: "center", color: "#8A9490", background: "rgba(36, 51, 47, 0.5)", borderRadius: 14, border: "1px dashed rgba(255,255,255,0.1)" }}>
-            <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>🛍️</span>
-            <strong style={{ fontSize: 16, color: "#ffffff", display: "block" }}>No customer orders received yet</strong>
-            <span style={{ fontSize: 13 }}>When customers purchase surplus food items, their detailed order receipts & pickup tokens will appear here.</span>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {merchantClaims
-              .filter((c) => {
-                if (claimsFilter === "all") return true;
-                if (claimsFilter === "pending") {
-                  return (
-                    c.status === "pending" ||
-                    c.status === "ready" ||
-                    c.status === "READY_FOR_PICKUP" ||
-                    c.status === "TOKEN_VERIFIED"
-                  );
-                }
-                if (claimsFilter === "completed") {
-                  return (
-                    c.status === "collected" ||
-                    c.status === "PICKED_UP" ||
-                    c.status === "COMPLETED" ||
-                    c.status === "DELIVERED"
-                  );
-                }
-                return c.status === claimsFilter;
-              })
+          return (
+            <>
+              <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+                {[
+                  {
+                    id: "pending",
+                    label: `Pending Pickups (${merchantClaims.filter((c) => isPending(c.status)).length})`,
+                  },
+                  {
+                    id: "completed",
+                    label: `Completed Orders (${merchantClaims.filter((c) => isCompleted(c.status)).length})`,
+                  },
+                  { id: "all", label: `All Orders (${merchantClaims.length})` },
+                  {
+                    id: "rerouted_to_ngo",
+                    label: `Rerouted to NGO (${merchantClaims.filter((c) => isRerouted(c.status)).length})`,
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setClaimsFilter(tab.id)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      background: claimsFilter === tab.id ? "#69C7A8" : "#2D3B37",
+                      color: claimsFilter === tab.id ? "#000" : "#cbd5e1",
+                      border: `1px solid ${claimsFilter === tab.id ? "#69C7A8" : "#66736F"}`,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* CLAIMS LIST */}
+              {merchantClaims.length === 0 ? (
+                <div style={{ padding: "36px 16px", textAlign: "center", color: "#8A9490", background: "rgba(36, 51, 47, 0.5)", borderRadius: 14, border: "1px dashed rgba(255,255,255,0.1)" }}>
+                  <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>🛍️</span>
+                  <strong style={{ fontSize: 16, color: "#ffffff", display: "block" }}>No customer orders received yet</strong>
+                  <span style={{ fontSize: 13 }}>When customers purchase surplus food items, their detailed order receipts & pickup tokens will appear here.</span>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {merchantClaims
+                    .filter((c) => {
+                      if (claimsFilter === "all") return true;
+                      if (claimsFilter === "pending") return isPending(c.status);
+                      if (claimsFilter === "completed") return isCompleted(c.status);
+                      if (claimsFilter === "rerouted_to_ngo") return isRerouted(c.status);
+                      return String(c.status || "").toUpperCase() === String(claimsFilter).toUpperCase();
+                    })
               .map((c) => {
                 const statusUpper = (c.status || "").toUpperCase();
                 const isCollected = ["COLLECTED", "PICKED_UP", "COMPLETED", "DELIVERED"].includes(statusUpper);
@@ -792,6 +803,9 @@ export default function MerchantDashboard() {
               })}
           </div>
         )}
+            </>
+          );
+        })()}
       </div>
 
       {/* MY HOTEL PROFILE CARD */}

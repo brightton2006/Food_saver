@@ -960,12 +960,12 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
       }
     }
 
-    // 1. SELECT FOR UPDATE to lock row & prevent race conditions
+    // 1. SELECT FOR UPDATE on base table to lock row & prevent race conditions
     const [rows] = await connection.query(
-      `SELECT l.*, h.hotel_name, u.full_name as merchant_name, u.user_id as merchant_user_id
-       FROM listings l
-       JOIN hotels h ON l.hotel_id = h.hotel_id
-       JOIN users u ON h.merchant_user_id = u.user_id
+      `SELECT l.*, h.hotel_name, COALESCE(u.full_name, h.hotel_name) as merchant_name, u.user_id as merchant_user_id
+       FROM fact_listings l
+       LEFT JOIN dim_hotels h ON l.hotel_id = h.hotel_id
+       LEFT JOIN dim_users u ON h.merchant_user_id = u.user_id
        WHERE l.listing_id = ? FOR UPDATE`,
       [id]
     );
@@ -1001,7 +1001,7 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
     const newAvailable = lRow.quantity_available - qty;
     const newStatus = newAvailable === 0 ? "soldout" : "active";
 
-    await connection.query("UPDATE listings SET quantity_available = ?, status = ? WHERE listing_id = ?", [newAvailable, newStatus, id]);
+    await connection.query("UPDATE fact_listings SET quantity_available = ?, status = ? WHERE listing_id = ?", [newAvailable, newStatus, id]);
 
     const claimId = generateId("clm");
     const claimToken = generateClaimToken();
@@ -1029,9 +1029,9 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
     }
 
     await connection.query(
-      `INSERT INTO claims (claim_id, claim_token, listing_id, customer_user_id, claim_method, quantity, unit_price, price_paid, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-      [claimId, claimToken, id, validCustomerUserId, method === "ngo_rescue" ? "ngo_rescue" : "digital", qty, unitPrice, pricePaid]
+      `INSERT INTO fact_claims (claim_id, claim_token, listing_id, listing_fact_id, hotel_id, customer_user_id, claim_method, quantity, unit_price, price_paid, status, claimed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NOW())`,
+      [claimId, claimToken, id, lRow.listing_fact_id || null, lRow.hotel_id || null, validCustomerUserId, method === "ngo_rescue" ? "ngo_rescue" : "digital", qty, unitPrice, pricePaid]
     );
 
     await connection.commit();
@@ -1041,6 +1041,10 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
       id: claimId,
       token: claimToken,
       listingId: id,
+      listingFactId: lRow.listing_fact_id || null,
+      hotelId: lRow.hotel_id,
+      merchantId: lRow.merchant_user_id || lRow.hotel_id,
+      merchantUserId: lRow.merchant_user_id,
       itemName: lRow.item_name,
       merchantName: lRow.hotel_name || lRow.merchant_name,
       merchantUsername: lRow.merchant_name ? lRow.merchant_name.toLowerCase().replace(/\s+/g, "_") : "",
@@ -1054,7 +1058,7 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
       pricePaid,
       claimedAt: Date.now(),
       pickupWindowEnd: lRow.pickup_window_end ? String(lRow.pickup_window_end).slice(0, 5) : "22:00",
-      status: "pending",
+      status: "PENDING",
     };
 
     // Asynchronously dispatch Order Confirmation Email & Notifications
@@ -1109,12 +1113,15 @@ async function claimListing(id, { customerId, customerName, customerUsername, us
 async function getClaimByToken(token) {
   if (!token) return null;
   const [rows] = await pool.query(
-    `SELECT c.*, l.item_name, l.address, l.image_url, l.pickup_window_end, h.hotel_name, u.full_name as merchant_name, cust.full_name as customer_name
-     FROM claims c
-     JOIN listings l ON c.listing_id = l.listing_id
-     JOIN hotels h ON l.hotel_id = h.hotel_id
-     JOIN users u ON h.merchant_user_id = u.user_id
-     LEFT JOIN users cust ON c.customer_user_id = cust.user_id
+    `SELECT c.*, l.item_name, l.address, l.image_url, l.pickup_window_end, l.hotel_id,
+            COALESCE(h.hotel_name, 'Partner Hotel') as hotel_name, 
+            COALESCE(u.full_name, h.hotel_name, 'Partner Hotel') as merchant_name, 
+            COALESCE(cust.full_name, c.customer_user_id, 'Customer') as customer_name
+     FROM fact_claims c
+     JOIN fact_listings l ON c.listing_id = l.listing_id
+     LEFT JOIN dim_hotels h ON (l.hotel_id = h.hotel_id OR c.hotel_id = h.hotel_id)
+     LEFT JOIN dim_users u ON h.merchant_user_id = u.user_id
+     LEFT JOIN dim_users cust ON c.customer_user_id = cust.user_id
      WHERE UPPER(c.claim_token) = ?`,
     [String(token).toUpperCase()]
   );
@@ -1144,25 +1151,31 @@ async function markCollected(token, merchantUserId) {
 async function claimsForMerchant(merchantName) {
   const query = merchantName ? String(merchantName).trim().toLowerCase() : "all";
 
-  let sql = `SELECT c.*, l.item_name, l.address, l.image_url, l.pickup_window_end, h.hotel_name, u.full_name as merchant_name, cust.full_name as customer_name
-     FROM claims c
-     JOIN listings l ON c.listing_id = l.listing_id
-     JOIN hotels h ON l.hotel_id = h.hotel_id
-     JOIN users u ON h.merchant_user_id = u.user_id
-     LEFT JOIN users cust ON c.customer_user_id = cust.user_id`;
+  let sql = `SELECT c.*, l.item_name, l.address, l.image_url, l.pickup_window_end, l.hotel_id,
+                    COALESCE(h.hotel_name, 'Partner Hotel') as hotel_name, 
+                    COALESCE(u.full_name, h.hotel_name, 'Partner Hotel') as merchant_name, 
+                    COALESCE(cust.full_name, c.customer_user_id, 'Customer') as customer_name
+     FROM fact_claims c
+     JOIN fact_listings l ON c.listing_id = l.listing_id
+     LEFT JOIN dim_hotels h ON (l.hotel_id = h.hotel_id OR c.hotel_id = h.hotel_id)
+     LEFT JOIN dim_users u ON h.merchant_user_id = u.user_id
+     LEFT JOIN dim_users cust ON c.customer_user_id = cust.user_id`;
 
   let params = [];
   if (!query || query === "all" || query === "admin" || query === "guest" || query === "undefined" || query === "null") {
     sql += ` ORDER BY c.claimed_at DESC`;
   } else {
-    sql += ` WHERE LOWER(u.full_name) LIKE ?
-               OR LOWER(h.hotel_name) LIKE ?
+    sql += ` WHERE LOWER(h.hotel_name) LIKE ?
+               OR LOWER(u.full_name) LIKE ?
+               OR LOWER(h.hotel_id) = ?
+               OR LOWER(l.hotel_id) = ?
+               OR LOWER(c.hotel_id) = ?
+               OR LOWER(h.merchant_user_id) = ?
                OR LOWER(u.user_id) = ?
                OR LOWER(u.email) = ?
-               OR LOWER(h.hotel_id) = ?
-               OR LOWER(h.merchant_user_id) = ?
+               OR h.hotel_id IN (SELECT hotel_id FROM dim_hotels WHERE LOWER(merchant_user_id) = ? OR LOWER(hotel_id) = ?)
             ORDER BY c.claimed_at DESC`;
-    params = [`%${query}%`, `%${query}%`, query, query, query, query];
+    params = [`%${query}%`, `%${query}%`, query, query, query, query, query, query, query, query];
   }
 
   const [rows] = await pool.query(sql, params);
@@ -1172,12 +1185,15 @@ async function claimsForMerchant(merchantName) {
 async function claimsForCustomer(customerIdOrUsername) {
   const target = customerIdOrUsername ? String(customerIdOrUsername).trim().toLowerCase() : "guest";
 
-  let sql = `SELECT c.*, l.item_name, l.address, l.image_url, l.pickup_window_end, h.hotel_name, u.full_name as merchant_name, cust.full_name as customer_name
-     FROM claims c
-     JOIN listings l ON c.listing_id = l.listing_id
-     JOIN hotels h ON l.hotel_id = h.hotel_id
-     JOIN users u ON h.merchant_user_id = u.user_id
-     LEFT JOIN users cust ON c.customer_user_id = cust.user_id`;
+  let sql = `SELECT c.*, l.item_name, l.address, l.image_url, l.pickup_window_end, l.hotel_id,
+                    COALESCE(h.hotel_name, 'Partner Hotel') as hotel_name, 
+                    COALESCE(u.full_name, h.hotel_name, 'Partner Hotel') as merchant_name, 
+                    COALESCE(cust.full_name, c.customer_user_id, 'Customer') as customer_name
+     FROM fact_claims c
+     JOIN fact_listings l ON c.listing_id = l.listing_id
+     LEFT JOIN dim_hotels h ON (l.hotel_id = h.hotel_id OR c.hotel_id = h.hotel_id)
+     LEFT JOIN dim_users u ON h.merchant_user_id = u.user_id
+     LEFT JOIN dim_users cust ON c.customer_user_id = cust.user_id`;
 
   let params = [];
   if (!target || target === "guest" || target === "all") {
@@ -1317,7 +1333,7 @@ async function acknowledgeNotification(id, ngoName) {
       "UPDATE ngo_notifications SET status = 'acknowledged', ngo_id = ?, acknowledged_at = NOW() WHERE notification_id = ?",
       [ngoId, id]
     );
-    await connection.query("UPDATE listings SET status = 'rescued' WHERE listing_id = ?", [notifRow.listing_id]);
+    await connection.query("UPDATE fact_listings SET status = 'rescued' WHERE listing_id = ?", [notifRow.listing_id]);
 
     await connection.commit();
 
@@ -1363,7 +1379,7 @@ async function rerouteClaimToNgo(token) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    await connection.query("UPDATE claims SET status = 'rerouted_to_ngo', rerouted_at = NOW() WHERE claim_token = ?", [token.toUpperCase()]);
+    await connection.query("UPDATE fact_claims SET status = 'rerouted_to_ngo', rerouted_at = NOW() WHERE claim_token = ?", [token.toUpperCase()]);
 
     const notifId = generateId("notif");
     const reason = `Customer (${claim.customerName}) failed to reach restaurant. Auto-rerouted to rescue NGO.`;

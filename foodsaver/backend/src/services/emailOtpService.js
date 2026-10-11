@@ -160,8 +160,9 @@ async function requestEmailOtp({ email, name = "", userId = null, purpose = "EMA
       email: cleanEmail,
       cooldownSeconds: 60,
       expiryMinutes: EXPIRY_MINUTES,
+      previewUrl: mailResult.previewUrl || null,
       // Include debug OTP in automated test runs or local dev
-      ...(process.env.NODE_ENV === "test" || process.env.NODE_ENV !== "production" ? { _debugOtp: otp } : {}),
+      ...(process.env.NODE_ENV === "test" || process.env.NODE_ENV !== "production" ? { _debugOtp: otp, devOtp: otp } : {}),
     };
   } catch (err) {
     console.error("[EmailOtpService] Error requesting OTP:", err.message);

@@ -7,10 +7,49 @@ const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
 const SMTP_SECURE = process.env.SMTP_SECURE === "true" || SMTP_PORT === 465;
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
-const EMAIL_FROM = process.env.EMAIL_FROM || '"FoodSaver" <no-reply@foodsaver.com>';
 const APP_URL = process.env.FRONTEND_URL || "https://food-saver-front.onrender.com";
 
 let transporter = null;
+let etherealAccount = null;
+
+/**
+ * Returns effective sender address matching authenticated user to prevent SMTP rejections
+ */
+function getFromAddress() {
+  const configuredFrom = process.env.EMAIL_FROM;
+  if (configuredFrom && !configuredFrom.includes("no-reply@foodsaver.com")) {
+    return configuredFrom;
+  }
+  if (SMTP_USER && SMTP_USER.includes("@")) {
+    return `"FoodSaver" <${SMTP_USER}>`;
+  }
+  return configuredFrom || '"FoodSaver" <no-reply@foodsaver.com>';
+}
+
+/**
+ * Automatically extracts clean, readable plain-text from HTML content
+ */
+function extractPlainText(html) {
+  if (!html) return "";
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<td[^>]*>/gi, "  ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\n\s*\n\s*\n/g, "\n\n")
+    .trim();
+}
 
 /**
  * Initializes or retrieves nodemailer transporter
@@ -18,21 +57,58 @@ let transporter = null;
 async function getTransporter() {
   if (transporter) return transporter;
 
-  if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-    transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_SECURE,
-      auth: {
-        user: SMTP_USER,
-        pass: SMTP_PASS,
-      },
-    });
-  } else {
-    // Development / Fallback Ethereal test transporter
-    transporter = nodemailer.createTransport({
-      jsonTransport: true, // Safe JSON transport when real SMTP credentials are not yet added in env
-    });
+  const isGmail = (SMTP_HOST && SMTP_HOST.includes("gmail")) || (SMTP_USER && SMTP_USER.includes("@gmail.com"));
+
+  if (SMTP_USER && SMTP_PASS) {
+    if (isGmail) {
+      transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+      console.log(`📧 [EmailService] Configured with Gmail SMTP for ${SMTP_USER}`);
+    } else if (SMTP_HOST) {
+      transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_SECURE,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+      console.log(`📧 [EmailService] Configured with real SMTP server: ${SMTP_HOST}:${SMTP_PORT}`);
+    }
+  }
+
+  if (!transporter) {
+    try {
+      // Auto-generate Ethereal test account for instant dev email inbox delivery & web previews
+      etherealAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: {
+          user: etherealAccount.user,
+          pass: etherealAccount.pass,
+        },
+      });
+      console.log(`📧 [EmailService] Generated automatic Ethereal test inbox account (${etherealAccount.user})`);
+    } catch (err) {
+      console.warn("⚠️ [EmailService] Ethereal account creation failed, using JSON transport:", err.message);
+      transporter = nodemailer.createTransport({
+        jsonTransport: true,
+      });
+    }
   }
 
   return transporter;
@@ -119,16 +195,27 @@ async function sendMail({ to, subject, html, text, eventId, eventType, reference
 
   try {
     const mailer = await getTransporter();
+    const fromAddress = getFromAddress();
+    const fallbackText = text || extractPlainText(html) || "Please view this message in an HTML-compatible email viewer.";
+
     const mailOptions = {
-      from: EMAIL_FROM,
+      from: fromAddress,
       to,
       subject,
-      text: text || "Please view this message in an HTML-compatible email viewer.",
+      text: fallbackText,
       html,
     };
 
     const info = await mailer.sendMail(mailOptions);
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+
     console.log(`📧 [EmailService] Email sent successfully to ${to} [Subject: "${subject}"]`);
+    if (previewUrl) {
+      console.log(`\n==================================================`);
+      console.log(`🔗 [EMAIL INBOX PREVIEW LINK] Open to view rendered email:`);
+      console.log(`👉 ${previewUrl}`);
+      console.log(`==================================================\n`);
+    }
 
     if (eventId) {
       await recordCommunicationEvent({
@@ -138,11 +225,11 @@ async function sendMail({ to, subject, html, text, eventId, eventType, reference
         recipient: to,
         channel: "EMAIL",
         status: "SENT",
-        payload: { ...payload, messageId: info.messageId },
+        payload: { ...payload, messageId: info.messageId, previewUrl },
       });
     }
 
-    return { success: true, messageId: info.messageId, eventId };
+    return { success: true, messageId: info.messageId, previewUrl, eventId };
   } catch (err) {
     console.error(`❌ [EmailService] Failed to send email to ${to}:`, err.message);
 
@@ -164,7 +251,7 @@ async function sendMail({ to, subject, html, text, eventId, eventType, reference
 }
 
 // -------------------------------------------------------------
-// RESPONSIVE HTML EMAIL TEMPLATES
+// RESPONSIVE HTML EMAIL TEMPLATES WITH INLINE CSS
 // -------------------------------------------------------------
 
 function getBaseTemplate({ title, preheader, content }) {
@@ -178,42 +265,46 @@ function getBaseTemplate({ title, preheader, content }) {
   <style>
     body { margin: 0; padding: 0; background-color: #F4F7F6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
     .email-container { max-width: 600px; margin: 20px auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #DCE6E3; box-shadow: 0 8px 30px rgba(20, 92, 82, 0.08); }
-    .header-banner { background: linear-gradient(135deg, #145C52 0%, #16796B 100%); padding: 32px 28px; text-align: center; color: #FFFFFF; }
-    .brand-logo-text { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
+    .header-banner { background: #145C52; background: linear-gradient(135deg, #145C52 0%, #16796B 100%); padding: 32px 28px; text-align: center; color: #FFFFFF; }
+    .brand-logo-text { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0; color: #FFFFFF; }
     .brand-subtext { font-size: 13px; color: #E8F4F1; margin-top: 4px; font-weight: 500; }
     .content-body { padding: 32px 28px; color: #102A2A; font-size: 15px; line-height: 1.6; }
     .btn-action { display: inline-block; background-color: #145C52; color: #FFFFFF !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 14px 28px; border-radius: 10px; margin: 20px 0; text-align: center; }
     .card-box { background-color: #F7FAF9; border: 1px solid #E2EBE8; border-radius: 12px; padding: 18px; margin: 20px 0; }
     .footer { background-color: #F4F7F6; padding: 24px; text-align: center; font-size: 12px; color: #687674; border-top: 1px solid #E2EBE8; }
     .footer a { color: #145C52; text-decoration: none; font-weight: 600; }
-    .token-chip { display: inline-block; font-size: 24px; font-weight: 900; letter-spacing: 4px; color: #145C52; background: #E8F4F1; padding: 8px 20px; border-radius: 8px; border: 1.5px dashed #145C52; margin: 10px 0; }
-    .impact-badge { background: #FEF9EB; border: 1px solid #F5C451; border-radius: 10px; padding: 14px; color: #B45309; font-weight: 600; margin: 20px 0; display: flex; align-items: center; }
+    .token-chip { display: inline-block; font-size: 24px; font-weight: 900; letter-spacing: 4px; color: #145C52; background: #E8F4F1; padding: 8px 20px; border-radius: 8px; border: 1.5px dashed #145C52; margin: 10px 0; font-family: monospace; }
   </style>
 </head>
-<body>
+<body style="margin: 0; padding: 0; background-color: #F4F7F6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
   <div style="display:none;font-size:1px;color:#333;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
     ${preheader || title}
   </div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #F4F7F6; padding: 20px 0;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #F4F7F6; padding: 20px 0; width: 100%;">
     <tr>
       <td align="center">
-        <div class="email-container">
-          <!-- Header -->
-          <div class="header-banner">
-            <h1 class="brand-logo-text">🍱 FoodSaver</h1>
-            <div class="brand-subtext">Save Good Food • Save Money • Save The Planet</div>
-          </div>
-          <!-- Body -->
-          <div class="content-body">
-            ${content}
-          </div>
-          <!-- Footer -->
-          <div class="footer">
-            <p style="margin: 0 0 8px;">You received this transactional email from FoodSaver.</p>
-            <p style="margin: 0 0 8px;">FoodSaver Direct Connect • Kovilpatti, Tamil Nadu • <a href="mailto:support@foodsaver.com">support@foodsaver.com</a></p>
-            <p style="margin: 0; color: #8A9693;">&copy; ${new Date().getFullYear()} FoodSaver. All rights reserved.</p>
-          </div>
-        </div>
+        <!-- Main Email Card with Inline Styles -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-container" style="max-width: 600px; width: 100%; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #DCE6E3; box-shadow: 0 8px 30px rgba(20, 92, 82, 0.08); text-align: left;">
+          <tr>
+            <td>
+              <!-- Header -->
+              <div class="header-banner" style="background-color: #145C52; background: linear-gradient(135deg, #145C52 0%, #16796B 100%); padding: 32px 28px; text-align: center; color: #FFFFFF;">
+                <h1 class="brand-logo-text" style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0; color: #FFFFFF; font-family: sans-serif;">🍱 FoodSaver</h1>
+                <div class="brand-subtext" style="font-size: 13px; color: #E8F4F1; margin-top: 4px; font-weight: 500;">Save Good Food • Save Money • Save The Planet</div>
+              </div>
+              <!-- Body -->
+              <div class="content-body" style="padding: 32px 28px; color: #102A2A; font-size: 15px; line-height: 1.6; font-family: sans-serif;">
+                ${content}
+              </div>
+              <!-- Footer -->
+              <div class="footer" style="background-color: #F4F7F6; padding: 24px; text-align: center; font-size: 12px; color: #687674; border-top: 1px solid #E2EBE8; font-family: sans-serif;">
+                <p style="margin: 0 0 8px; color: #687674;">You received this transactional email from FoodSaver.</p>
+                <p style="margin: 0 0 8px; color: #687674;">FoodSaver Direct Connect • Kovilpatti, Tamil Nadu • <a href="mailto:support@foodsaver.com" style="color: #145C52; text-decoration: none; font-weight: 600;">support@foodsaver.com</a></p>
+                <p style="margin: 0; color: #8A9693;">&copy; ${new Date().getFullYear()} FoodSaver. All rights reserved.</p>
+              </div>
+            </td>
+          </tr>
+        </table>
       </td>
     </tr>
   </table>
@@ -764,9 +855,10 @@ async function sendOtpEmail({ to, name, otp, expiryMinutes = 5 }) {
     to,
     subject: `Verify Your Email Address: ${otp} - FoodSaver`,
     html,
+    text: `Hello ${name || "Valued User"},\n\nYour 6-digit verification code is: ${otp}\n\nThis code will expire in ${expiryMinutes} minutes.\nPlease enter this code to verify your FoodSaver account.\n\nDo not share this code with anyone.`,
     eventId,
     eventType: "SECURITY_OTP_EMAIL",
-    payload: { expiryMinutes },
+    payload: { expiryMinutes, otp },
   });
 }
 
